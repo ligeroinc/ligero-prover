@@ -1,0 +1,25 @@
+(module
+  (import "env" "i64_private_const" (func $i64_private_const (param i64) (result i64)))
+  (import "env" "assert_equal" (func $assert_equal (param i64 i64)))
+
+  (func $test
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 1)) (call $i64_private_const (i64.const 1))) (call $i64_private_const (i64.const 1)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 0)) (call $i64_private_const (i64.const 1))) (call $i64_private_const (i64.const 0)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 0)) (call $i64_private_const (i64.const -1))) (call $i64_private_const (i64.const 0)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const -1)) (call $i64_private_const (i64.const -1))) (call $i64_private_const (i64.const 1)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 0x8000000000000000)) (call $i64_private_const (i64.const 2))) (call $i64_private_const (i64.const 0xc000000000000000)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 0x8000000000000001)) (call $i64_private_const (i64.const 1000))) (call $i64_private_const (i64.const 0xffdf3b645a1cac09)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 5)) (call $i64_private_const (i64.const 2))) (call $i64_private_const (i64.const 2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const -5)) (call $i64_private_const (i64.const 2))) (call $i64_private_const (i64.const -2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 5)) (call $i64_private_const (i64.const -2))) (call $i64_private_const (i64.const -2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const -5)) (call $i64_private_const (i64.const -2))) (call $i64_private_const (i64.const 2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 7)) (call $i64_private_const (i64.const 3))) (call $i64_private_const (i64.const 2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const -7)) (call $i64_private_const (i64.const 3))) (call $i64_private_const (i64.const -2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 7)) (call $i64_private_const (i64.const -3))) (call $i64_private_const (i64.const -2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const -7)) (call $i64_private_const (i64.const -3))) (call $i64_private_const (i64.const 2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 11)) (call $i64_private_const (i64.const 5))) (call $i64_private_const (i64.const 2)))
+    (call $assert_equal (i64.div_s (call $i64_private_const (i64.const 17)) (call $i64_private_const (i64.const 7))) (call $i64_private_const (i64.const 2)))
+  )
+
+  (export "_start" (func $test))
+)
