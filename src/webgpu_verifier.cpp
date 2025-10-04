@@ -25,13 +25,19 @@
 #include <invoke.hpp>
 #include <runtime.hpp>
 #include <wgpu.hpp>
+
+#include <util/portable_sample.hpp>
+#include <util/boost/portable_binary_iarchive.hpp>
 #include <zkp/common.hpp>
 #include <zkp/finite_field_gmp.hpp>
 #include <zkp/nonbatch_context.hpp>
 #include <interpreter.hpp>
 
-#include <wabt/wast-parser.h>
 #include <boost/algorithm/hex.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+#include <wabt/error-formatter.h>
+#include <wabt/wast-parser.h>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -39,6 +45,7 @@ using json = nlohmann::json;
 using namespace wabt;
 using namespace ligero;
 using namespace ligero::vm;
+namespace io = boost::iostreams;
 namespace fs = std::filesystem;
 
 using field_t = zkp::bn254_gmp;
@@ -48,16 +55,18 @@ using buffer_t = typename executor_t::buffer_type;
 constexpr bool enable_RAM = false;
 
 int main(int argc, const char *argv[]) {
-    std::cout << std::format("ligero-prover v{}.{}.{}+{}.{}",
-                             LIGETRON_VERSION_MAJOR,
-                             LIGETRON_VERSION_MINOR,
-                             LIGETRON_VERSION_PATCH,
-                             LIGETRON_GIT_BRANCH,
-                             LIGETRON_GIT_COMMIT_HASH)
-              << std::endl;
+    const std::string ligero_version_string =
+        std::format("ligero-prover v{}.{}.{}+{}.{}",
+                    LIGETRON_VERSION_MAJOR,
+                    LIGETRON_VERSION_MINOR,
+                    LIGETRON_VERSION_PATCH,
+                    LIGETRON_GIT_BRANCH,
+                    LIGETRON_GIT_COMMIT_HASH);
+    std::cout << ligero_version_string << std::endl;
     
     std::vector<std::vector<u8>> input_args;
     std::string shader_path;
+    std::string proof_name = "proof_data.gz";
 
     if (argc < 2) {
         std::cerr << "Error: No JSON input provided" << std::endl;
@@ -135,51 +144,64 @@ int main(int argc, const char *argv[]) {
         }
     }
 
-    fs::path program_name;
-    if (jconfig.contains("program")) {
-        program_name = jconfig["program"].template get<std::string>();
-    }
-
-    if (program_name.empty() || !fs::exists(program_name)) {
-        LIGERO_LOG_FATAL << std::format("File {} does not exist!", program_name.c_str());
-        exit(EXIT_FAILURE);
-    }
-    
-    std::ifstream fs(program_name, std::ios::binary);
-    std::stringstream ss;
-    ss << fs.rdbuf();
-    const std::string content = ss.str();
-    
     std::unordered_set<int> indices_set;
     if (jconfig.contains("private-indices")) {
         indices_set = jconfig["private-indices"].template get<std::unordered_set<int>>();
     }
+
+    fs::path program_name;
+    if (jconfig.contains("program")) {
+        program_name = jconfig["program"].template get<std::string>();
+    }
     
+    // Reading and parsing the wasm file
     // ------------------------------------------------------------
-    Result   wabt_result;
-    Features wabt_features;
-    std::unique_ptr<Module> wabt_module{ new Module{} };
-    
-    if (program_name.extension() == ".wat" || program_name.extension() == ".wast") {
-        Errors errors;
-        std::unique_ptr<WastLexer> lexer = WastLexer::CreateBufferLexer(
-            program_name.c_str(), content.data(), content.size(), &errors);
+    std::unique_ptr<wabt::Module> wabt_module{ new wabt::Module{} };
+    {
+        std::vector<uint8_t> program_data;
+        wabt::Result read_result = wabt::ReadFile(program_name.c_str(), &program_data);
 
-        WastParseOptions parse_wast_options(wabt_features);
-        wabt_result = ParseWatModule(lexer.get(), &wabt_module, &errors, &parse_wast_options);
-    }
-    else {
-        wabt_result = ReadBinaryIr(program_name.c_str(),
-                                   content.data(),
-                                   content.size(),
-                                   ReadBinaryOptions{},
-                                   nullptr,
-                                   wabt_module.get());
-    }
+        if (wabt::Failed(read_result)) {
+            std::cerr << std::format("Error: Could not read from file \"{}\"",
+                                     program_name.c_str())
+                      << std::endl;
+            exit(EXIT_FAILURE);
+        }
 
-    if (Failed(wabt_result)) {
-        LIGERO_LOG_FATAL << std::format("Failed to parse WASM module {}", program_name.c_str());
-        exit(EXIT_FAILURE);
+        wabt::Features wabt_features;
+        wabt::Result   parsing_result;
+        wabt::Errors   parsing_errors;
+        if (program_name.extension() == ".wat" || program_name.extension() == ".wast") {
+            std::unique_ptr<wabt::WastLexer> lexer = wabt::WastLexer::CreateBufferLexer(
+                program_name.c_str(),
+                program_data.data(),
+                program_data.size(),
+                &parsing_errors);
+
+            wabt::WastParseOptions parse_wast_options(wabt_features);
+            parsing_result = wabt::ParseWatModule(lexer.get(),
+                                                  &wabt_module,
+                                                  &parsing_errors,
+                                                  &parse_wast_options);
+        }
+        else {
+            parsing_result = wabt::ReadBinaryIr(program_name.c_str(),
+                                                program_data.data(),
+                                                program_data.size(),
+                                                wabt::ReadBinaryOptions{},
+                                                &parsing_errors,
+                                                wabt_module.get());
+        }
+
+        if (wabt::Failed(parsing_result)) {
+            auto err_msg = wabt::FormatErrorsToString(parsing_errors,
+                                                      wabt::Location::Type::Binary);
+            std::cerr << std::format("wabt: {}", err_msg)
+                      << std::format("Error: Failed to parse WASM module \"{}\"",
+                                     program_name.c_str())
+                      << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
 
     auto [omega_k, omega_2k, omega_4k] = field_t::generate_omegas(k, n);
@@ -192,30 +214,61 @@ int main(int argc, const char *argv[]) {
 
     // ================================================================================
 
-    std::cout << "=============== Start Verify ===============" << std::endl;
-
-    auto vt = make_timer("Verify time");
-
     params::hasher::digest stage1_root;
     params::hasher::digest sample_seed;
     std::vector<uint32_t> encoded_code_limbs, encoded_linear_limbs, encoded_quad_limbs;
     zkp::merkle_tree<params::hasher>::decommitment decommit;
 
-    std::ifstream verifier_proof("proof.data", std::ios::in | std::ios::binary);
-    boost::archive::binary_iarchive ia(verifier_proof);
-
+    std::stringstream compressed_proof;
+    io::filtering_istream proof_stream;
+    std::unique_ptr<portable_binary_iarchive> archive_ptr;
     try {
-        ia >> stage1_root
-           >> sample_seed
-           >> encoded_code_limbs
-           >> encoded_linear_limbs
-           >> encoded_quad_limbs
-           >> decommit;
+        std::ifstream proof_file(proof_name, std::ios::in | std::ios::binary);
+
+        if (!proof_file) {
+            std::cerr << std::format("Error: Could not read from file \"{}\"", proof_name)
+                      << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        compressed_proof << proof_file.rdbuf();
+        proof_file.close();
+
+        proof_stream.push(io::gzip_decompressor());
+        proof_stream.push(compressed_proof);
+
+        archive_ptr = std::make_unique<portable_binary_iarchive>(proof_stream);
+        *archive_ptr >> stage1_root
+                     >> sample_seed
+                     >> encoded_code_limbs
+                     >> encoded_linear_limbs
+                     >> encoded_quad_limbs
+                     >> decommit;
     }
-    catch (...) {
-        std::cerr << "Proof rejected due to serialization failed" << std::endl;
-        throw;
+    catch (const boost::archive::archive_exception& ex) {
+        switch (ex.code) {
+            case boost::archive::archive_exception::unsupported_version:
+                std::cerr
+                    << "Error: boost.archive: " << ex.what() << std::endl
+                    << "It seems the proof was created with a newer version of Boost.Archive. \n"
+                    << "Please update your Boost version to latest, or ask the file creator to use an older version." << std::endl;
+                break;
+            default:
+                std::cerr << "Error: boost.archive: " << ex.what() << std::endl;
+                break;
+        }
+
+        std::cerr << "Verification failed, exiting" << std::endl;
+        exit(EXIT_FAILURE);
     }
+    catch (const std::exception& ex) {
+        std::cerr << "Error: " << ex.what() << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    std::cout << "=============== Start Verify ===============" << std::endl;
+
+    auto vt = make_timer("Verify time");
 
     // Prepare random seed
     unsigned char seed[params::hasher::digest_size];
@@ -225,31 +278,35 @@ int main(int argc, const char *argv[]) {
     zkp::hash_random_engine<params::hasher> engine(sample_seed);
     std::vector<size_t> indexes(n), sample_index;
     std::iota(indexes.begin(), indexes.end(), 0);
-    std::sample(indexes.cbegin(), indexes.cend(),
-                std::back_inserter(sample_index),
-                params::sample_size,
-                engine);
+    portable_sample(indexes.begin(), indexes.end(),
+                    std::back_inserter(sample_index),
+                    params::sample_size,
+                    engine);
+    std::sort(sample_index.begin(), sample_index.end());
     
     auto vctx = std::make_unique<
         zkp::nonbatch_verifier_context<field_t,
                                        executor_t,
                                        zkp::verifier_random_policy,
-                                       params::hasher>>(
-                                           executor,
-                                           sample_index,
-                                           ia);
+                                       params::hasher,
+                                       portable_binary_iarchive>>(executor,
+                                                                  sample_index,
+                                                                  *archive_ptr);
     vctx-> init_witness_random(seed, params::any_iv);
 
     try {
         run_program(*wabt_module, *vctx, input_args, indices_set);
 
-        if (verifier_proof.peek() != EOF) {
-            throw std::runtime_error("Proof size mismatch");
+        if (proof_stream.peek() != EOF) {
+            std::cerr << "Error: proof size is bigger than it should be" << std::endl;
+            std::cerr << "Verification failed, exiting" << std::endl;
+            exit(EXIT_FAILURE);
         }
     }
     catch (const std::exception& e) {
-        std::cout << "Proof Rejected! Reason: " << e.what() << std::endl;
-        throw;
+        std::cout << "Error: " << e.what() << std::endl;
+        std::cerr << "Verification failed, exiting" << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     vt.stop();

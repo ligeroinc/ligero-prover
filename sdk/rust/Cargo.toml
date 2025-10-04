@@ -1,0 +1,56 @@
+[package]
+name = "ligetron"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+paste = "1.0.15"
+lazy_static = "1.4"
+base64 = "0.22.1"
+hex = "0.4.3"
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+opt-level = "z"
+lto = true
+panic = "abort"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+# Set example names
+[[example]]
+name = "edit_distance"
+path = "examples/edit_distance/edit_distance.rs"
+
+[[example]]
+name = "sha256"
+path = "examples/sha256/sha256.rs"
+
+[[example]]
+name = "poseidon_4to1"
+path = "examples/poseidon/poseidon_4to1.rs"
+
+[[example]]
+name = "poseidon_batch_2to1"
+path = "examples/poseidon/poseidon_batch_2to1.rs"
+
+[[example]]
+name = "poseidon_batch_4to1"
+path = "examples/poseidon/poseidon_batch_4to1.rs"
+
+[[example]]
+name = "poseidon2"
+path = "examples/poseidon2/poseidon2_bytes.rs"
+
+[[example]]
+name = "poseidon2_batch"
+path = "examples/poseidon2/poseidon2_bytes_batch.rs"
+
+[[example]]
+name = "eddsa"
+path = "examples/eddsa/eddsa_verify_no_args.rs"
+
+[[example]]
+name = "eddsa_batch"
+path = "examples/eddsa/eddsa_batch_verify_no_args.rs"

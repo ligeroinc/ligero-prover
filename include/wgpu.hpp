@@ -72,8 +72,6 @@ std::string format_error(WGPUErrorType err, const char *msg) {
         return std::format("Internal Error: {}", msg);
     case WGPUErrorType_Unknown:
         return std::format("Unknown Error: {}", msg);
-    case WGPUErrorType_Force32:
-        return std::format("Force32 Error: {}", msg);
     default:
         return std::format("<Uncaptured Type>: {}", msg);
     }
@@ -132,13 +130,6 @@ struct webgpu_bignum {
 };
 
 using webgpu_vec4u_t = webgpu_bignum<4>;
-
-struct sha256_ctx {
-    uint32_t data[64];
-    uint32_t datalen;
-    uint32_t bitlen[2];
-    uint32_t state[8];
-};
 
 template <size_t NumLimbs>
 struct global_config_t {
@@ -234,7 +225,6 @@ WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
 }
 #else
 WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
-    bool ready = false;
     WGPUAdapter adapter;
     
     WGPURequestAdapterOptions options {
@@ -256,19 +246,25 @@ WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
                         << std::string_view(msg.data, msg.length);
                 }
                 *reinterpret_cast<WGPUAdapter*>(ud1) = a;
-                *reinterpret_cast<bool*>(ud2) = true;
             },
         .userdata1 = &adapter,
-        .userdata2 = &ready
     };
 
     auto f = wgpuInstanceRequestAdapter(instance, &options, info);
 
     WGPUFutureWaitInfo wait { .future = f };
-    wgpuInstanceWaitAny(instance, 1, &wait, 0);
-
-    while (!ready) {
-        wgpuInstanceProcessEvents(instance);
+    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
+    if (status != WGPUWaitStatus_Success) {
+        std::cerr << "Error: " << "failed to request webgpu adapter: ";
+        switch (status) {
+            case WGPUWaitStatus_TimedOut:
+                std::cerr << "timeout" << std::endl;
+                break;
+            case WGPUWaitStatus_Error:
+                std::cerr << "unknown error" << std::endl;
+                break;
+            default: break;
+        }
     }
     return adapter;
 }
@@ -291,8 +287,6 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
                 reason_str = "DeviceLostReason::Unknown"; break;
             case WGPUDeviceLostReason_Destroyed:
                 reason_str = "DeviceLostReason::Destroyed"; break;
-            case WGPUDeviceLostReason_Force32:
-                reason_str = "DeviceLostReason::Force32"; break;
             default:
                 reason_str = "DeviceLostReason::<Uncaptured>";
             }
@@ -347,8 +341,6 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
                 reason_str = "DeviceLostReason::CallbackCancelled"; break;
             case WGPUDeviceLostReason_FailedCreation:
                 reason_str = "DeviceLostReason::FailedCreation"; break;
-            case WGPUDeviceLostReason_Force32:
-                reason_str = "DeviceLostReason::Force32"; break;
             default:
                 reason_str = "DeviceLostReason::<Uncaptured>";
             }
@@ -395,8 +387,24 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
                                WGPU_DESKTOP_MAX_BUFFER_SIZE);
         }
     }
+
+    const char *disabled_toggle_names[] = {
+        "enable_integer_range_analysis_in_robustness"
+    };
+
+    WGPUDawnTogglesDescriptor toggles {
+        .chain = {
+            .next = nullptr,
+            .sType = WGPUSType_DawnTogglesDescriptor
+        },
+        .enabledToggleCount  = 0,
+        .enabledToggles      = nullptr,
+        .disabledToggleCount = 1,
+        .disabledToggles     = disabled_toggle_names
+    };
       
     WGPUDeviceDescriptor desc {
+        .nextInChain                  = &toggles.chain,
         .label                        = WGPU_STRING("LigetronWebGPU"),
         .requiredFeatureCount         = 0,
         .requiredFeatures             = nullptr,
@@ -405,9 +413,7 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
         .uncapturedErrorCallbackInfo  = err
     };
 
-    bool ready = false;
     WGPUDevice device;
-    
     WGPURequestDeviceCallbackInfo info {
         .nextInChain = nullptr,
         .mode = WGPUCallbackMode_AllowProcessEvents,
@@ -421,19 +427,24 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
                                      << std::string_view(msg.data, msg.length);
                 }
                 *reinterpret_cast<WGPUDevice*>(ud1) = d;
-                *reinterpret_cast<bool*>(ud2) = true;
             },
         .userdata1 = &device,
-        .userdata2 = &ready
     };
 
     auto f = wgpuAdapterRequestDevice(adapter, &desc, info);
-
     WGPUFutureWaitInfo wait { .future = f };
-    wgpuInstanceWaitAny(instance, 1, &wait, 0);
-
-    while (!ready) {
-        wgpuInstanceProcessEvents(instance);
+    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
+    if (status != WGPUWaitStatus_Success) {
+        std::cerr << "Error: " << "failed to request webgpu device: ";
+        switch (status) {
+            case WGPUWaitStatus_TimedOut:
+                std::cerr << "timeout" << std::endl;
+                break;
+            case WGPUWaitStatus_Error:
+                std::cerr << "unknown error" << std::endl;
+                break;
+            default: break;
+        }
     }
     return device;
 }
@@ -463,8 +474,6 @@ void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset,
 }
 #else
 void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset, size_t size) {
-    bool ready = false;
-
     WGPUBufferMapCallbackInfo info {
         .mode = WGPUCallbackMode_AllowProcessEvents,
         .callback = [](WGPUMapAsyncStatus status, WGPUStringView msg, void *ud1, void *ud2) {
@@ -479,25 +488,28 @@ void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset,
                     status_str = "[MapAsync::Error]: "; break;
                 case WGPUMapAsyncStatus_Aborted:
                     status_str = "[MapAsync::Aborted]: "; break;
-                case WGPUMapAsyncStatus_Force32:
-                    status_str = "[MapAsync::Force32]: "; break;
                 default:
                     status_str = "[MapAsync::UncapturedError]: ";
                 }
                 LIGERO_LOG_ERROR << status_str << std::string_view(msg.data, msg.length);
             }
-            *reinterpret_cast<bool*>(ud1) = true;
-        },
-        .userdata1 = &ready
+        }
     };
     
     auto f = wgpuBufferMapAsync(map_buf, WGPUMapMode_Read, offset, size, info);
-
     WGPUFutureWaitInfo wait { .future = f };
-    wgpuInstanceWaitAny(instance, 1, &wait, 0);
-
-    while (!ready) {
-        wgpuInstanceProcessEvents(instance);
+    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
+    if (status != WGPUWaitStatus_Success) {
+        std::cerr << "Error: " << "failed to map buffer: ";
+        switch (status) {
+            case WGPUWaitStatus_TimedOut:
+                std::cerr << "timeout" << std::endl;
+                break;
+            case WGPUWaitStatus_Error:
+                std::cerr << "unknown error" << std::endl;
+                break;
+            default: break;
+        }
     }
 }
 #endif
@@ -521,8 +533,6 @@ void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
                     status_str = "Unknown Error"; break;
                 case WGPUQueueWorkDoneStatus_DeviceLost:
                     status_str = "Device Lost"; break;
-                case WGPUQueueWorkDoneStatus_Force32:
-                    status_str = "Force32"; break;
                 default:
                     status_str = "<Uncaptured>";
                 }
@@ -536,8 +546,6 @@ void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
 }
 #else
 void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
-    bool ready = false;
-
     WGPUQueueWorkDoneCallbackInfo info {
         .mode = WGPUCallbackMode_AllowProcessEvents,
         .callback = [](WGPUQueueWorkDoneStatus status, WGPUStringView message, void *ud1, void *ud2) {
@@ -550,24 +558,28 @@ void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
                     status_str = "Callback cancelled"; break;
                 case WGPUQueueWorkDoneStatus_Error:
                     status_str = "Error"; break;
-                case WGPUQueueWorkDoneStatus_Force32:
-                    status_str = "Force32"; break;
                 default:
                     status_str = "<Uncaptured>";
                 }
                 LIGERO_LOG_ERROR << std::format("WebGPU Work failed: {}, reason: {}", status_str, message.data);
             }
-            *reinterpret_cast<bool*>(ud1) = true;
-        },
-        .userdata1 = &ready
+        }
     };
     
     auto f = wgpuQueueOnSubmittedWorkDone(queue, info);
     WGPUFutureWaitInfo wait { .future = f };
-    wgpuInstanceWaitAny(instance, 1, &wait, 0);
-
-    while (!ready) {
-        wgpuInstanceProcessEvents(instance);
+    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
+    if (status != WGPUWaitStatus_Success) {
+        std::cerr << "Error: " << "failed to synchronize device: ";
+        switch (status) {
+            case WGPUWaitStatus_TimedOut:
+                std::cerr << "timeout" << std::endl;
+                break;
+            case WGPUWaitStatus_Error:
+                std::cerr << "unknown error" << std::endl;
+                break;
+            default: break;
+        }
     }
 }
 #endif
@@ -668,6 +680,13 @@ struct webgpu_context {
     using buffer_type        = webgpu_buffer_view;
     using device_bignum_type = webgpu_bignum<num_limbs>;
 
+    struct sha256_context {
+        uint32_t data[64];
+        uint32_t datalen;
+        uint32_t bitlen[2];
+        uint32_t state[8];
+    };
+
     webgpu_context() = default;
     ~webgpu_context();
 
@@ -688,7 +707,8 @@ struct webgpu_context {
 
     webgpu_binding bind_eltwise2(buffer_type x, buffer_type out);
     webgpu_binding bind_eltwise3(buffer_type x, buffer_type y, buffer_type out);
-    webgpu_binding bind_sha256(buffer_type input, buffer_type digest);
+    webgpu_binding bind_sha256_context(buffer_type context, buffer_type digest);
+    webgpu_binding bind_sha256_buffer(buffer_type input);
     webgpu_binding bind_sampling(buffer_type from, buffer_type to);
     webgpu_binding bind_ntt(buffer_type buf);
 
@@ -733,10 +753,9 @@ struct webgpu_context {
     // SHA256
     // ------------------------------------------------------------
     void sha256_init(size_t num_instances);
-    void sha256_digest_init(webgpu_binding bind);
-    void sha256_digest_update(webgpu_binding bind);
-    void sha256_digest_final(webgpu_binding bind);
-
+    void sha256_digest_init(webgpu_binding ctx);
+    void sha256_digest_update(webgpu_binding ctx, webgpu_binding buf);
+    void sha256_digest_final(webgpu_binding ctx);
 
     // Sampling
     // ------------------------------------------------------------
@@ -880,7 +899,27 @@ private:
     }
     
     void init_instance() {
+#if defined(__EMSCRIPTEN__)
         instance_ = wgpuCreateInstance(nullptr);
+#else
+        WGPUInstanceFeatureName features[] = {
+            WGPUInstanceFeatureName_TimedWaitAny
+        };
+
+        WGPUInstanceLimits limits {
+            .nextInChain          = nullptr,
+            .timedWaitAnyMaxCount = 1
+        };
+
+        WGPUInstanceDescriptor desc {
+            .nextInChain          = nullptr,
+            .requiredFeatureCount = 1,
+            .requiredFeatures     = features,
+            .requiredLimits       = &limits,
+        };
+
+        instance_ = wgpuCreateInstance(&desc);
+#endif
 
         if (!instance_) {
             throw std::runtime_error("Could not initialize WebGPU!");
@@ -915,7 +954,8 @@ private:
     
 public:
     fs::path shader_root_path_;
-    
+
+    int      num_submitted_tasks_;
     uint32_t num_hardware_cores_;
 
     uint32_t num_default_workgroups_;
@@ -937,13 +977,14 @@ public:
     WGPUShaderModule sha_shader_ = nullptr;
 
     // Bindgroup Layouts
-    WGPUBindGroupLayout global_config_layout_ = nullptr;
-    WGPUBindGroupLayout ntt_config_layout_    = nullptr;
-    WGPUBindGroupLayout ntt_layout_           = nullptr;
-    WGPUBindGroupLayout eltwise_layout2_      = nullptr;
-    WGPUBindGroupLayout eltwise_layout3_      = nullptr;
-    WGPUBindGroupLayout sha256_layout_        = nullptr;
-    WGPUBindGroupLayout sampling_layout_      = nullptr;
+    WGPUBindGroupLayout global_config_layout_  = nullptr;
+    WGPUBindGroupLayout ntt_config_layout_     = nullptr;
+    WGPUBindGroupLayout ntt_layout_            = nullptr;
+    WGPUBindGroupLayout eltwise_layout2_       = nullptr;
+    WGPUBindGroupLayout eltwise_layout3_       = nullptr;
+    WGPUBindGroupLayout sha256_context_layout_ = nullptr;
+    WGPUBindGroupLayout sha256_buffer_layout_  = nullptr;
+    WGPUBindGroupLayout sampling_layout_       = nullptr;
 
     // Bindings
     webgpu_binding global_config_binding_;
@@ -953,7 +994,6 @@ public:
     std::vector<webgpu_binding> ntt_inverse_bindings_2k_;
     std::vector<webgpu_binding> ntt_forward_bindings_n_;
     std::vector<webgpu_binding> ntt_inverse_bindings_n_;
-    webgpu_binding sha256_ctx_binding_;
     webgpu_binding sampling_index_binding_;
 
     // Compute Pipelines
@@ -1000,9 +1040,6 @@ public:
     std::vector<webgpu_buffer_view> ntt_omegas_k_,  ntt_omegas_2k_, ntt_omegas_n_;
     std::vector<webgpu_buffer_view> ntt_omegasinv_k_, ntt_omegasinv_2k_, ntt_omegasinv_n_;
 
-    // SHA256 contexts
-    webgpu_buffer_view sha256_ctx_;
-
     // Sampling Indexes
     size_t num_samplings_;
     webgpu_buffer_view sampling_index_buf_;
@@ -1026,7 +1063,8 @@ webgpu_context::~webgpu_context() {
     if (ntt_layout_) wgpuBindGroupLayoutRelease(ntt_layout_);
     if (eltwise_layout2_) wgpuBindGroupLayoutRelease(eltwise_layout2_);
     if (eltwise_layout3_) wgpuBindGroupLayoutRelease(eltwise_layout3_);
-    if (sha256_layout_) wgpuBindGroupLayoutRelease(sha256_layout_);
+    if (sha256_context_layout_) wgpuBindGroupLayoutRelease(sha256_context_layout_);
+    if (sha256_buffer_layout_) wgpuBindGroupLayoutRelease(sha256_buffer_layout_);
     if (sampling_layout_) wgpuBindGroupLayoutRelease(sampling_layout_);
 
     if (ntt_forward_) wgpuComputePipelineRelease(ntt_forward_);
@@ -1070,21 +1108,17 @@ webgpu_context::~webgpu_context() {
     for (auto& buf : ntt_omegas_n_) { buf.destroy_source(); }
     for (auto& buf : ntt_omegasinv_n_) { buf.destroy_source(); }
 
-    sha256_ctx_.destroy_source();
     sampling_index_buf_.destroy_source();
 }
 
 void webgpu_context::submit(WGPUCommandBuffer command) {
 #if !defined(__EMSCRIPTEN__)
-    // Avoid GPU timeout by synchronizing previous works
-    // WARNING: Enable this on browser will significantly impact performance by ~4x
-    static unsigned int counter = 0;
-    if (++counter % 512) {
+    constexpr int throttle = 127;
+    if ((++num_submitted_tasks_ & throttle) == 0) {
         device_synchronize();
-        counter = 0;
+        num_submitted_tasks_ = 0;
     }
 #endif
-    
     wgpuQueueSubmit(queue_, 1, &command);
     wgpuCommandBufferRelease(command);
 }
@@ -1244,13 +1278,13 @@ webgpu_binding webgpu_context::bind_eltwise3(buffer_type x, buffer_type y, buffe
     return binding;
 }
 
-webgpu_binding webgpu_context::bind_sha256(buffer_type input, buffer_type digest) {
-     WGPUBindGroupEntry entries[] = {
+webgpu_binding webgpu_context::bind_sha256_context(buffer_type ctx, buffer_type digest) {
+    WGPUBindGroupEntry entries[] {
         {
             .binding = 0,
-            .buffer  = input.get(),
-            .offset  = input.offset(),
-            .size    = input.size()
+            .buffer  = ctx.get(),
+            .offset  = ctx.offset(),
+            .size    = ctx.size()
         },
         {
             .binding = 1,
@@ -1260,15 +1294,37 @@ webgpu_binding webgpu_context::bind_sha256(buffer_type input, buffer_type digest
         }
     };
 
+    WGPUBindGroupDescriptor bind_desc {
+        .layout = sha256_context_layout_,
+        .entryCount = sizeof(entries) / sizeof(WGPUBindGroupEntry),
+        .entries = entries,
+    };
+
+    WGPUBindGroup bindgroup = wgpuDeviceCreateBindGroup(device_, &bind_desc);
+    webgpu_binding binding { bindgroup};
+    binding.buffers() = { ctx, digest };
+    return binding;
+}
+
+webgpu_binding webgpu_context::bind_sha256_buffer(buffer_type input) {
+     WGPUBindGroupEntry entries[] {
+        {
+            .binding = 0,
+            .buffer  = input.get(),
+            .offset  = input.offset(),
+            .size    = input.size()
+        },
+    };
+
     WGPUBindGroupDescriptor desc {
-        .layout = sha256_layout_,
+        .layout = sha256_buffer_layout_,
         .entryCount = sizeof(entries) / sizeof(WGPUBindGroupEntry),
         .entries = entries,
     };
 
     WGPUBindGroup bindgroup = wgpuDeviceCreateBindGroup(device_, &desc);
     webgpu_binding binding{ bindgroup };
-    binding.buffers() = { input, digest };
+    binding.buffers() = { input };
     return binding;
 }
 
@@ -2490,29 +2546,12 @@ void webgpu_context::sha256_init(size_t sha_instances) {
 
     sha_instances_ = sha_instances;
     sha_shader_    = wgpuDeviceCreateShaderModule(device_, &desc);
-    sha256_ctx_    = make_device_buffer(sha_instances * sizeof(sha256_ctx));
 
     WGPUBindGroupLayoutEntry sha256_ctx_bindings[] {
         {
             .binding = 0,
             .visibility = WGPUShaderStage_Compute,
             .buffer { .type = WGPUBufferBindingType_Storage },
-        },
-    };
-
-    WGPUBindGroupLayoutDescriptor ctx_layout_desc {
-        .label = WGPU_STRING("SHA256::context"),
-        .entryCount = 1,
-        .entries = sha256_ctx_bindings,
-    };
-
-    auto sha256_ctx_layout = wgpuDeviceCreateBindGroupLayout(device_, &ctx_layout_desc);
-
-    WGPUBindGroupLayoutEntry sha256_buffer_bindings[] = {
-        {
-            .binding = 0,
-            .visibility = WGPUShaderStage_Compute,
-            .buffer { .type = WGPUBufferBindingType_ReadOnlyStorage },
         },
         {
             .binding = 1,
@@ -2521,80 +2560,90 @@ void webgpu_context::sha256_init(size_t sha_instances) {
         }
     };
 
-    WGPUBindGroupLayoutDescriptor layoutDesc {
-        .label = WGPU_STRING("SHA256::buffer"),
+    WGPUBindGroupLayoutDescriptor ctx_layout_desc {
+        .label = WGPU_STRING("SHA256::context"),
         .entryCount = 2,
-        .entries = sha256_buffer_bindings,
-    };
-        
-    sha256_layout_ = wgpuDeviceCreateBindGroupLayout(device_, &layoutDesc);
-
-    WGPUBindGroupLayout layouts[2] {
-        sha256_ctx_layout,
-        sha256_layout_,
-    };
-    
-    WGPUPipelineLayoutDescriptor pipelineDesc {
-        .bindGroupLayoutCount = 2,
-        .bindGroupLayouts = layouts,
-    };
-    
-    WGPUPipelineLayout sha256_pipeline_layout = wgpuDeviceCreatePipelineLayout(device_, &pipelineDesc);
-
-    WGPUComputePipelineDescriptor pipeDesc {
-        .layout = sha256_pipeline_layout,
-        .compute { .module = sha_shader_ },
+        .entries = sha256_ctx_bindings,
     };
 
-    pipeDesc.label = WGPU_STRING("sha256 init");
-    pipeDesc.compute.entryPoint = WGPU_STRING("sha256_init");
-    sha256_init_ = wgpuDeviceCreateComputePipeline(device_, &pipeDesc);
+    sha256_context_layout_ = wgpuDeviceCreateBindGroupLayout(device_, &ctx_layout_desc);
 
-    pipeDesc.label = WGPU_STRING("sha256 update");
-    pipeDesc.compute.entryPoint = WGPU_STRING("sha256_update");
-    sha256_update_ = wgpuDeviceCreateComputePipeline(device_, &pipeDesc);
-
-    pipeDesc.label = WGPU_STRING("sha256 final");
-    pipeDesc.compute.entryPoint = WGPU_STRING("sha256_final");
-    sha256_final_ = wgpuDeviceCreateComputePipeline(device_, &pipeDesc);
-
-    wgpuPipelineLayoutRelease(sha256_pipeline_layout);
-
-    // Bind context buffer
-    // --------------------------------------------------
-    WGPUBindGroupEntry entries[] = {
+    WGPUBindGroupLayoutEntry sha256_buffer_bindings[] = {
         {
             .binding = 0,
-            .buffer  = sha256_ctx_.get(),
-            .offset  = sha256_ctx_.offset(),
-            .size    = sha256_ctx_.size()
+            .visibility = WGPUShaderStage_Compute,
+            .buffer { .type = WGPUBufferBindingType_ReadOnlyStorage },
         },
     };
 
-    WGPUBindGroupDescriptor bind_desc {
-        .layout = sha256_ctx_layout,
-        .entryCount = sizeof(entries) / sizeof(WGPUBindGroupEntry),
-        .entries = entries,
+    WGPUBindGroupLayoutDescriptor layoutDesc {
+        .label = WGPU_STRING("SHA256::buffer"),
+        .entryCount = 1,
+        .entries = sha256_buffer_bindings,
+    };
+        
+    sha256_buffer_layout_ = wgpuDeviceCreateBindGroupLayout(device_, &layoutDesc);
+
+    // ------------------------------------------------------------
+
+    WGPUBindGroupLayout init_layouts[1] {
+        sha256_context_layout_
     };
 
-    sha256_ctx_binding_ = wgpuDeviceCreateBindGroup(device_, &bind_desc);
+    WGPUBindGroupLayout update_layouts[2] {
+        sha256_context_layout_,
+        sha256_buffer_layout_,
+    };
+    
+    WGPUPipelineLayoutDescriptor pipelineDesc {
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = init_layouts,
+    };
+    
+    WGPUPipelineLayout init_pipeline_layout = wgpuDeviceCreatePipelineLayout(device_, &pipelineDesc);
+
+    pipelineDesc.bindGroupLayoutCount = 2;
+    pipelineDesc.bindGroupLayouts     = update_layouts;
+    WGPUPipelineLayout update_pipeline_layout = wgpuDeviceCreatePipelineLayout(device_, &pipelineDesc);
+
+    WGPUComputePipelineDescriptor compute_desc {
+        .layout = init_pipeline_layout,
+        .compute { .module = sha_shader_ },
+    };
+
+    compute_desc.label = WGPU_STRING("sha256 init");
+    compute_desc.compute.entryPoint = WGPU_STRING("sha256_init");
+    sha256_init_ = wgpuDeviceCreateComputePipeline(device_, &compute_desc);
+
+    compute_desc.label = WGPU_STRING("sha256 final");
+    compute_desc.compute.entryPoint = WGPU_STRING("sha256_final");
+    sha256_final_ = wgpuDeviceCreateComputePipeline(device_, &compute_desc);
+
+    compute_desc.layout = update_pipeline_layout;
+
+    compute_desc.label = WGPU_STRING("sha256 update");
+    compute_desc.compute.entryPoint = WGPU_STRING("sha256_update");
+    sha256_update_ = wgpuDeviceCreateComputePipeline(device_, &compute_desc);
+
+    wgpuPipelineLayoutRelease(init_pipeline_layout);
+    wgpuPipelineLayoutRelease(update_pipeline_layout);
 }
 
 
-void webgpu_context::sha256_digest_init(webgpu_binding bind) {
+void webgpu_context::sha256_digest_init(webgpu_binding ctx) {
     WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sh256_digest_init") };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     // Clear context buffer
+    auto& sha256_ctx = ctx.buffers()[0];
     wgpuCommandEncoderClearBuffer(encoder,
-                                  sha256_ctx_.get(),
-                                  sha256_ctx_.offset(),
-                                  sha256_ctx_.size());
+                                  sha256_ctx.get(),
+                                  sha256_ctx.offset(),
+                                  sha256_ctx.size());
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
     wgpuComputePassEncoderSetPipeline(pass, sha256_init_);
-    wgpuComputePassEncoderSetBindGroup(pass, 0, sha256_ctx_binding_.get(), 0, nullptr);
-    wgpuComputePassEncoderSetBindGroup(pass, 1, bind.get(), 0, nullptr);
-    
+    wgpuComputePassEncoderSetBindGroup(pass, 0, ctx.get(), 0, nullptr);
+
     wgpuComputePassEncoderDispatchWorkgroups(
         pass, calc_blocks(sha_instances_, workgroup_size), 1, 1);
 
@@ -2606,15 +2655,16 @@ void webgpu_context::sha256_digest_init(webgpu_binding bind) {
 }
 
 
-void webgpu_context::sha256_digest_update(webgpu_binding bind) {
+void webgpu_context::sha256_digest_update(webgpu_binding ctx, webgpu_binding buf) {
     WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sha256_digest_update") };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
     wgpuComputePassEncoderSetPipeline(pass, sha256_update_);
-    wgpuComputePassEncoderSetBindGroup(pass, 0, sha256_ctx_binding_.get(), 0, nullptr);
-    wgpuComputePassEncoderSetBindGroup(pass, 1, bind.get(), 0, nullptr);
-    wgpuComputePassEncoderDispatchWorkgroups(pass, num_default_workgroups_, 1, 1);
+    wgpuComputePassEncoderSetBindGroup(pass, 0, ctx.get(), 0, nullptr);
+    wgpuComputePassEncoderSetBindGroup(pass, 1, buf.get(), 0, nullptr);
+    wgpuComputePassEncoderDispatchWorkgroups(
+        pass, calc_blocks(sha_instances_, workgroup_size), 1, 1);
 
     wgpuComputePassEncoderEnd(pass);
     wgpuComputePassEncoderRelease(pass);
@@ -2624,15 +2674,15 @@ void webgpu_context::sha256_digest_update(webgpu_binding bind) {
 }
 
 
-void webgpu_context::sha256_digest_final(webgpu_binding bind) {
+void webgpu_context::sha256_digest_final(webgpu_binding ctx) {
     WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sha256_digest_final") };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
     wgpuComputePassEncoderSetPipeline(pass, sha256_final_);
-    wgpuComputePassEncoderSetBindGroup(pass, 0, sha256_ctx_binding_.get(), 0, nullptr);
-    wgpuComputePassEncoderSetBindGroup(pass, 1, bind.get(), 0, nullptr);
-    wgpuComputePassEncoderDispatchWorkgroups(pass, num_default_workgroups_, 1, 1);
+    wgpuComputePassEncoderSetBindGroup(pass, 0, ctx.get(), 0, nullptr);
+    wgpuComputePassEncoderDispatchWorkgroups(
+        pass, calc_blocks(sha_instances_, workgroup_size), 1, 1);
 
     wgpuComputePassEncoderEnd(pass);
     wgpuComputePassEncoderRelease(pass);

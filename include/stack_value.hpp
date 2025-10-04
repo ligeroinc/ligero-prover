@@ -69,8 +69,17 @@ private:
     } data_{};
 };
 
-struct wasm_frame;
+struct stack_value;
 struct label_t { u32 arity; };
+
+struct wasm_frame {
+    u32 arity;
+    std::vector<stack_value> locals;
+    module_instance *module;
+
+    wasm_frame();
+    ~wasm_frame();
+};
 
 struct stack_value {
     using value_type = std::variant<native_numeric,
@@ -211,16 +220,6 @@ protected:
     value_type data_;
 };
 
-
-struct wasm_frame {
-    u32 arity;
-    std::vector<stack_value> locals;
-    module_instance *module;
-
-    wasm_frame() : arity(0), locals(), module(nullptr) { }
-};
-
-
 std::string stack_value::to_string() const {
     return std::visit(
         prelude::overloaded {
@@ -258,6 +257,12 @@ std::string stack_value::to_string() const {
                 }, data_);
 }
 
-
+wasm_frame:: wasm_frame() : arity(0), locals(), module(nullptr) { }
+wasm_frame::~wasm_frame() {
+        // Enforce reverse-order destruction of elements
+        while (!locals.empty()) {
+            locals.pop_back();
+        }
+    }
 
 }  // namespace ligero::vm

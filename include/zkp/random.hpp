@@ -115,8 +115,8 @@ struct hash_random_engine {
             offset_ -= i;
         }
         else {
-            int remind = i - (offset_ + 1);
-            int q = remind / cycle_size, r = remind % cycle_size;
+            int32_t remind = i - (offset_ + 1);
+            int32_t q = remind / cycle_size, r = remind % cycle_size;
 
             hash_ << state_ + q - 1;
             buffer_ = hash_.flush_digest();
@@ -141,8 +141,8 @@ protected:
     Hasher hash_;
     typename Hasher::digest seed_;
     typename Hasher::digest buffer_;
-    size_t state_ = 0;
-    int offset_ = -1;
+    uint64_t state_ = 0;
+    int32_t offset_ = -1;
 };
 
 struct zero_dist {

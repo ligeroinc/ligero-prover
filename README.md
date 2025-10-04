@@ -143,9 +143,9 @@ From a convenient location:
 ```bash
 git clone https://dawn.googlesource.com/dawn
 cd dawn/
-git checkout 41d631c0cbcd46ddc723222fc80890f4305dbc65
+git checkout cec4482eccee45696a7c0019e750c77f101ced04
 mkdir release && cd release
-cmake -DDAWN_FETCH_DEPENDENCIES=ON -DDAWN_ENABLE_INSTALL=ON -DCMAKE_BUILD_TYPE=Release ..
+cmake -DDAWN_FETCH_DEPENDENCIES=ON -DDAWN_BUILD_MONOLITHIC_LIBRARY=STATIC -DDAWN_ENABLE_INSTALL=ON -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
 ```
@@ -198,21 +198,8 @@ cd ligetron
 ```
 
 ---
-### Build the SDK
 
-The SDK must be built before attempting to make Native or Web ligetron. [Step by step instructions here](https://github.com/ligeroinc/ligetron/blob/main/sdk/README.md)
-
-From the project root
-```bash
-cd sdk
-mkdir build && cd build
-emcmake cmake ..
-make -j
-```
-
----
-
-### Build Native
+### Build the native version of the Prover/Verifier
 
 From the root directory:
 ```bash
@@ -222,8 +209,9 @@ make -j
 ```
 
 ---
-### Build Web
+### Build the web version of the Prover/Verifier
 
+From the root directory:
 ``` bash
 mkdir -p build-web && cd build-web
 cmake -DCMAKE_BUILD_TYPE=Web -DCMAKE_PREFIX_PATH=<path-to-dependencies> ..
@@ -231,6 +219,26 @@ make -j
 ```
 
 ---
+### Build the C++ version of the SDK
+
+[Step by step instructions here](https://github.com/ligeroinc/ligetron/blob/main/sdk/cpp/README.md)
+
+From the project root
+```bash
+cd sdk/cpp
+mkdir build && cd build
+emcmake cmake ..
+make -j
+```
+
+---
+### Build the Rust version of the SDK
+
+From the project root
+```bash
+cd sdk/rust
+cargo build --target wasm32-wasip1 --release
+```
 
 ## Running the Prover/Verifier
 
@@ -253,27 +261,19 @@ where the single argument is a string produced by `JSON.stringify()`. Here is th
 | `private-indices` | [int]    |          | []         | Index of private arguments. Start from 1 |
 | `args`            | [object] |          | []         | Program arguments. Objects are in the form of { <type> : <val> } where `type` is `str`/`i64`/`hex` |
 
-Packing size influences the proof length. This parameter needs to be optimally chosen to minimize proof length.
-
-For example, to invoke the edit distance prover:
-
-```bash
-./webgpu_prover '{"program":"../sdk/build/examples/edit.wasm","shader-path":"../shader","packing":8192,"private-indices":[1],"args":[{"str":"abcdeabcdeabcde"},{"str":"bcdefabcdeabcde"},{"i64":15},{"i64":15}]}'
-```
+**Note**: Packing size influences the proof length. This parameter needs to be optimally chosen to minimize proof length.
 
 ### verifier
 * Navigate to the build directory and run the following command to run the verifier:
 
 ``` bash
-./webgpu_verifier <equvalent JSON argument as for demo>
-```
-For example, to invoke the edit distance verifier:
-```bash
-./webgpu_verifier '{"program":"../sdk/build/examples/edit.wasm","shader-path":"../shader","packing":8192,"private-indices":[1],"args":[{"str":"xxxxxxxxxxxxxxx"},{"str":"bcdefabcdeabcde"},{"i64":15},{"i64":15}]}'
+./webgpu_verifier <equivalent JSON argument as for demo, but with obscured private indices>
 ```
 ## Examples
 
 **Note:** When in doubt, it's always a good idea to recompile the example again from source in `/examples`. For example, the latest interface takes a JSON as input which contains more information than the old interface. As a consequence, we no longer need to manually convert the input from string to `int` or raw hex, all we need now is a simple `reinterpret_cast`. The old application still works by taking all input as string but it's less efficient.
+
+Navigate to the `build` directory to run the examples.
 
 ### Example 1: Edit Distance
 Suppose we have `edit.wasm` either by compiling `/examples/edit_distance.cpp` or pick from `wasm/edit.wasm`. The arguments are `abcde` and `bcdef`, then:

@@ -4,21 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.0]
 
 ### Added
-
-### Changed
-- Change non-batch randomness from AES to powers of some `r`
-- Change stage 1 hash scheme to Poseidon 2
 - Add commitment(hash) in stage 2 for randomness rows
 - Add sampling of randomness rows in stage 3
 
+### Changed
+- Bumped Dawn version to commit cec4482ecc
+- Change non-batch randomness from AES to powers of some `r`
+- Change stage 1 hash scheme to Poseidon 2
+
 ### Removed
+
+## [1.0.0] 2025-06-25
+
+### Changed
+
+#### SDK
+- Introduced `bn254fr_class.h` and `vbn254fr_class.h` which contain C++ wrappers for API functions from `bn254fr.h` and `vbn254fr.h`
+- Deprecated integer debug `print` function.
+- Adapted the examples to the new API
 
 ## [0.9.9] 2025-06-01
 
-### CHanged
+### Changed
 
 #### Interpreter
 - Implement a new backend that performs no allocation at runtime
@@ -37,7 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - [SDK] Change Poseidon2 interface to take arbitrary input length
-- [SDK] Change EdDSA interface to take message hash 
+- [SDK] Change EdDSA interface to take message hash
 
 ## [0.1.3] 2025-02-19
 
