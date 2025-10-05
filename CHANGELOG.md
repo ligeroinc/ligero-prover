@@ -4,16 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.0]
+## [Unreleased]
 
 ### Added
-- Add commitment(hash) in stage 2 for randomness rows
-- Add sampling of randomness rows in stage 3
 
 ### Changed
-- Bumped Dawn version to commit cec4482ecc
 - Change non-batch randomness from AES to powers of some `r`
 - Change stage 1 hash scheme to Poseidon 2
+- Add commitment(hash) in stage 2 for randomness rows
+- Add sampling of randomness rows in stage 3
 
 ### Removed
 
@@ -47,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - [SDK] Change Poseidon2 interface to take arbitrary input length
-- [SDK] Change EdDSA interface to take message hash
+- [SDK] Change EdDSA interface to take message hash 
 
 ## [0.1.3] 2025-02-19
 

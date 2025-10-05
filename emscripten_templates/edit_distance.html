@@ -108,8 +108,8 @@
 	  // New code for the 'Download' button
 	  document.getElementById('download-button').addEventListener('click', function() {
 		  try {
-			  // Read the 'proof_data.gz' file from Emscripten's virtual filesystem
-			  var proofData = FS.readFile('proof_data.gz', { encoding: 'binary' });
+			  // Read the 'proof.data' file from Emscripten's virtual filesystem
+			  var proofData = FS.readFile('proof.data', { encoding: 'binary' });
 			  
 			  // Create a Blob from the file data
 			  var blob = new Blob([proofData], { type: 'application/octet-stream' });
@@ -120,7 +120,7 @@
 			  // Create a temporary anchor element to initiate the download
 			  var a = document.createElement('a');
 			  a.href = url;
-			  a.download = 'proof_data.gz';
+			  a.download = 'proof.data';
 			  document.body.appendChild(a);
 			  a.click();
 			  
@@ -128,8 +128,8 @@
 			  document.body.removeChild(a);
 			  URL.revokeObjectURL(url);
 		  } catch (e) {
-			  console.error('Error downloading proof:', e);
-			  alert('Error downloading proof: ' + e.message);
+			  console.error('Error downloading proof.data:', e);
+			  alert('Error downloading proof.data: ' + e.message);
 		  }
 	  });
 
@@ -159,7 +159,7 @@
 						  var dir = '/';
 
 						  // Write the file to Emscripten's filesystem
-						  FS.writeFile('proof_data.gz', new Uint8Array(contents));
+						  FS.writeFile('proof.data', new Uint8Array(contents));
 
 						  const input1 = document.getElementById('input1').value;
 						  const input2 = document.getElementById('input2').value;

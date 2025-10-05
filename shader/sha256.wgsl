@@ -30,9 +30,9 @@ struct sha256_batch_context {
 struct sha256_digest { data : array<u32, sha256_block_size> };
 
 @group(0) @binding(0) var<storage, read_write> ctx    : sha256_batch_context;
-@group(0) @binding(1) var<storage, read_write> digest : array<sha256_digest>;
-@group(1) @binding(0) var<storage, read>       input  : array<u32>;
 
+@group(1) @binding(0) var<storage, read>       input  : array<u32>;
+@group(1) @binding(1) var<storage, read_write> digest : array<sha256_digest>;
 
 var<private> k : array<u32, 64> = array<u32, 64>(
     0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,

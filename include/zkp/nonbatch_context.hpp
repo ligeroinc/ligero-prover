@@ -16,10 +16,9 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <array>
 #include <random>
-#include <span>
-#include <unordered_map>
 
 #include <zkp/random.hpp>
 #include <zkp/merkle_tree.hpp>
@@ -167,31 +166,24 @@ struct nonbatch_context_base {
     template <typename T>
     T memory_load(address_t u8_offset) {
         T storage;
-        std::memcpy(&storage, memory_data().data() + u8_offset, sizeof(T));
+        std::memcpy(&storage, memory() + u8_offset, sizeof(T));
         return storage;
     }
 
-    template <typename T> requires std::is_trivially_copyable_v<T>
-    void memory_store(address_t u8_offset, const T& val, size_t size = sizeof(T)) {
-        std::memcpy(memory_data().data() + u8_offset, &val, size);
+    template <typename T>
+    void memory_store(address_t u8_offset, const T& val) {
+        static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+        std::memcpy(memory() + u8_offset, &val, sizeof(T));
     }
 
-    memory_instance& memory() {
-        return store_->memorys[module_->memaddrs[0]];
+    unsigned char *memory() {
+        auto& inst = store_->memorys[module_->memaddrs[0]];
+        return inst.data.data();
     }
 
-    const memory_instance& memory() const {
-        return store_->memorys[module_->memaddrs[0]];
-    }
-
-    std::span<u8> memory_data() {
-        auto& buf = memory().data;
-        return { buf.data(), buf.size() };
-    }
-
-    const std::span<const u8> memory_data() const {
-        auto& buf = memory().data;
-        return { buf.data(), buf.size() };
+    const unsigned char *memory() const {
+        const auto& inst = store_->memorys[module_->memaddrs[0]];
+        return inst.data.data();
     }
 
     template <typename Module, typename... Args>
@@ -220,21 +212,6 @@ struct nonbatch_context_base {
             std::cout << v.to_string() << " ";
         }
         std::cout << std::endl;
-    }
-
-    void dump_memory(size_t start, size_t count) const {
-        auto& data = store_->memorys[module_->memaddrs[0]].data;
-
-        const size_t bytes_per_row = 16;
-        for (size_t i = start; i < start + count; i += bytes_per_row) {
-            std::cout << std::setw(8) << std::setfill('0') << std::hex << i << "  ";
-            for (size_t j = 0; j < bytes_per_row && i + j < data.size(); ++j) {
-                std::cout << std::setw(2) << std::setfill('0') << std::hex
-                          << static_cast<int>(data[i + j]) << ' ';
-            }
-            std::cout << '\n';
-        }
-        std::cout << std::dec; // restore decimal output
     }
 
     // ------------------------------------------------------------
@@ -421,37 +398,30 @@ struct nonbatch_stage1_context
 
             size_t num_element = exe.encoding_size();
             size_t buffer_size = num_element * sizeof(digest_type);
-
-            sha256_context_    = exe.make_device_buffer(executor_.encoding_size() * sizeof(typename Executor::sha256_context));
             sha256_digest_     = exe.make_device_buffer(buffer_size);
 
             bind_ntt_x_ = exe.bind_ntt(device_x_);
             bind_ntt_y_ = exe.bind_ntt(device_y_);
             bind_ntt_z_ = exe.bind_ntt(device_z_);
 
-            bind_sha256_ctx_ = exe.bind_sha256_context(sha256_context_, sha256_digest_);
-            bind_sha256_x_   = exe.bind_sha256_buffer(device_x_);
-            bind_sha256_y_   = exe.bind_sha256_buffer(device_y_);
-            bind_sha256_z_   = exe.bind_sha256_buffer(device_z_);
+            bind_sha256_x_ = exe.bind_sha256(device_x_, sha256_digest_);
+            bind_sha256_y_ = exe.bind_sha256(device_y_, sha256_digest_);
+            bind_sha256_z_ = exe.bind_sha256(device_z_, sha256_digest_);
 
-            // Initialize SHA256 context
-            // --------------------------------------------------
-            executor_.sha256_digest_init(bind_sha256_ctx_);
+            // Init the internal SHA state, doesn't matter which binding
+            executor_.sha256_digest_init(bind_sha256_x_);
         }
 
     ~nonbatch_stage1_context() {
         device_x_.destroy_source();
         device_y_.destroy_source();
         device_z_.destroy_source();
-
-        sha256_context_.destroy_source();
         sha256_digest_.destroy_source();
 
         bind_ntt_x_.destroy();
         bind_ntt_y_.destroy();
         bind_ntt_z_.destroy();
 
-        bind_sha256_ctx_.destroy();
         bind_sha256_x_.destroy();
         bind_sha256_y_.destroy();
         bind_sha256_z_.destroy();
@@ -462,7 +432,7 @@ struct nonbatch_stage1_context
         val.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_x_, limbs_.data(), limbs_.size());
         this->executor().encode_ntt_device(bind_ntt_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
     }
 
     void quadratic_callback(witness_row_type x, witness_row_type y, witness_row_type z) override {
@@ -470,19 +440,19 @@ struct nonbatch_stage1_context
         x_val.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_x_, limbs_.data(), limbs_.size());
         this->executor().encode_ntt_device(bind_ntt_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
 
         auto [y_val, y_rand] = y;
         y_val.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_y_, limbs_.data(), limbs_.size());
         this->executor().encode_ntt_device(bind_ntt_y_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
 
         auto [z_val, z_rand] = z;
         z_val.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_z_, limbs_.data(), limbs_.size());
         this->executor().encode_ntt_device(bind_ntt_z_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_z_);
+        this->executor().sha256_digest_update(bind_sha256_z_);
     }
 
     void mask_callback(mpz_vector& code, mpz_vector& linear, mpz_vector& quad) override {
@@ -492,21 +462,21 @@ struct nonbatch_stage1_context
         code.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_x_, limbs_.data(), limbs_.size());
         this->executor().encode_ntt_device(bind_ntt_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
 
         assert(linear.size() == 2 * K);
         linear.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_y_, limbs_.data(), limbs_.size());
         this->executor().ntt_inverse_2k(bind_ntt_y_);
         this->executor().ntt_forward_n(bind_ntt_y_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
 
         assert(quad.size() == 2 * K);
         quad.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_z_, limbs_.data(), limbs_.size());
         this->executor().ntt_inverse_2k(bind_ntt_z_);
         this->executor().ntt_forward_n(bind_ntt_z_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_z_);
+        this->executor().sha256_digest_update(bind_sha256_z_);
     }
 
     void on_batch_init(buffer_t& x) {
@@ -521,7 +491,7 @@ struct nonbatch_stage1_context
 
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().encode_ntt_device(bind_ntt_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
     }
 
     void on_batch_bit(buffer_t& x) {
@@ -529,7 +499,7 @@ struct nonbatch_stage1_context
 
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().encode_ntt_device(bind_ntt_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
     }
 
     void on_batch_equal(buffer_t& x, buffer_t& y) {
@@ -541,8 +511,8 @@ struct nonbatch_stage1_context
         this->executor().encode_ntt_device(bind_ntt_x_);
         this->executor().encode_ntt_device(bind_ntt_y_);
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
     }
 
     void on_batch_quadratic(buffer_t& x, buffer_t& y, buffer_t& z) {
@@ -562,13 +532,13 @@ struct nonbatch_stage1_context
             this->executor().encode_ntt_device(bind_ntt_y_);
         }
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_z_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_z_);
     }
 
-    std::vector<digest_type> flush_digests() {
-        this->executor().sha256_digest_final(bind_sha256_ctx_);
+    std::vector<digest_type> flush_digests() {        
+        this->executor().sha256_digest_final(bind_sha256_x_);
         return this->executor().template copy_to_host<digest_type>(sha256_digest_);
     }
 
@@ -588,10 +558,9 @@ protected:
     size_t num_equal_gates_ = 0, num_mul_gates_ = 0;
     
     buffer_t device_x_, device_y_, device_z_;
-    buffer_t sha256_context_, sha256_digest_;
+    buffer_t sha256_digest_;
 
     webgpu_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
-    webgpu_binding bind_sha256_ctx_;
     webgpu_binding bind_sha256_x_, bind_sha256_y_, bind_sha256_z_;
 };
 
@@ -703,7 +672,6 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
 
     void linear_callback(witness_row_type row) override {
         auto [val, rand] = row;
-
         val.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer_clear(device_x_, limbs_.data(), limbs_.size());
 
@@ -922,10 +890,7 @@ protected:
 };
 
 
-template <typename Field,
-          typename Executor,
-          typename RandomPolicy,
-          typename OutputArchive>
+template <typename Field, typename Executor, typename RandomPolicy>
 struct nonbatch_stage3_context
     : public nonbatch_context_base<Field, Executor, RandomPolicy>
 {
@@ -942,7 +907,7 @@ struct nonbatch_stage3_context
 
     nonbatch_stage3_context(Executor& exe,
                             const std::vector<size_t>& si,
-                            OutputArchive& oa)
+                            boost::archive::binary_oarchive& oa)
         : Base(exe),
           sample_index_(si),
           oa_(oa)
@@ -1119,7 +1084,7 @@ struct nonbatch_stage3_context
 protected:
     std::vector<size_t> sample_index_;
     std::vector<uint64_t> limbs_;
-    OutputArchive& oa_;
+    boost::archive::binary_oarchive& oa_;
 
     buffer_t device_x_, device_y_, device_z_;
     buffer_t device_samplings_;
@@ -1140,8 +1105,7 @@ protected:
 template <typename Field,
           typename Executor,
           typename RandomPolicy,
-          typename Hasher,
-          typename InputArchive>
+          typename Hasher>
 struct nonbatch_verifier_context
     : public nonbatch_context_base<Field, Executor, RandomPolicy>
 {
@@ -1160,7 +1124,7 @@ struct nonbatch_verifier_context
 
     nonbatch_verifier_context(Executor& exe,
                               const std::vector<size_t>& si,
-                              InputArchive& ia)
+                              boost::archive::binary_iarchive& ia)
         : Base(exe), sample_index_(si),
           pop_offset_(0),
           ia_(ia)
@@ -1192,9 +1156,7 @@ struct nonbatch_verifier_context
             sample_rand_z_ = exe.make_sample_buffer();
 
             size_t buffer_size = si.size() * sizeof(digest_type);
-
-            sha256_context_ = exe.make_device_buffer(si.size() * sizeof(typename Executor::sha256_context));
-            sha256_digest_  = exe.make_device_buffer(buffer_size);
+            sha256_digest_ = exe.make_device_buffer(buffer_size);
 
             // Bindings
             // --------------------------------------------------
@@ -1202,10 +1164,9 @@ struct nonbatch_verifier_context
             bind_ntt_rand_y_ = exe.bind_ntt(device_rand_y_);
             bind_ntt_rand_z_ = exe.bind_ntt(device_rand_z_);
 
-            bind_sha256_ctx_ = exe.bind_sha256_context(sha256_context_, sha256_digest_);
-            bind_sha256_x_   = exe.bind_sha256_buffer(device_x_);
-            bind_sha256_y_   = exe.bind_sha256_buffer(device_y_);
-            bind_sha256_z_   = exe.bind_sha256_buffer(device_z_);
+            bind_sha256_x_ = exe.bind_sha256(device_x_, sha256_digest_);
+            bind_sha256_y_ = exe.bind_sha256(device_y_, sha256_digest_);
+            bind_sha256_z_ = exe.bind_sha256(device_z_, sha256_digest_);
 
             bind_code_check_x_ = exe.bind_eltwise2(device_x_, code_);
             bind_code_check_y_ = exe.bind_eltwise2(device_y_, code_);
@@ -1233,9 +1194,8 @@ struct nonbatch_verifier_context
             bind_batch_equal_sub_ = exe.bind_eltwise3(device_x_, device_y_, tmp1_);
             bind_batch_equal_fma_ = exe.bind_eltwise2(tmp1_, quad_);
 
-            // Initialize SHA256 context
-            // --------------------------------------------------
-            exe.sha256_digest_init(bind_sha256_ctx_);
+            // Init the internal SHA state, doesn't matter which binding
+            exe.sha256_digest_init(bind_sha256_x_);
         }
 
     ~nonbatch_verifier_context() {
@@ -1258,7 +1218,6 @@ struct nonbatch_verifier_context
         device_rand_y_.destroy_source();
         device_rand_z_.destroy_source();
 
-        sha256_context_.destroy_source();
         sha256_digest_.destroy_source();
 
         bind_ntt_x_.destroy();
@@ -1271,7 +1230,6 @@ struct nonbatch_verifier_context
         bind_sample_rand_y_.destroy();
         bind_sample_rand_z_.destroy();
 
-        bind_sha256_ctx_.destroy();
         bind_sha256_x_.destroy();
         bind_sha256_y_.destroy();
         bind_sha256_z_.destroy();
@@ -1337,7 +1295,7 @@ struct nonbatch_verifier_context
         auto [_, rand] = row;
 
         pop_sample(device_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
 
         rand.export_limbs(limbs_.data(),
                           limbs_.size(),
@@ -1362,9 +1320,9 @@ struct nonbatch_verifier_context
         pop_sample(device_y_);
         pop_sample(device_z_);
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_z_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_z_);
 
         x_rand.export_limbs(limbs_.data(),
                             limbs_.size(),
@@ -1408,9 +1366,9 @@ struct nonbatch_verifier_context
         pop_sample(device_y_);
         pop_sample(device_z_);
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_z_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_z_);
 
         this->executor().EltwiseAddAssignMod(bind_code_check_x_);
         this->executor().EltwiseAddAssignMod(bind_linear_mask_y_);
@@ -1419,14 +1377,14 @@ struct nonbatch_verifier_context
 
     void on_batch_init(buffer_t& x) {
         pop_sample(device_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
         check_code(bind_code_check_x_);
     }
 
     void on_batch_bit(buffer_t& x) {
         pop_sample(device_x_);
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
 
         check_code(bind_code_check_x_);
 
@@ -1439,8 +1397,8 @@ struct nonbatch_verifier_context
         pop_sample(device_x_);
         pop_sample(device_y_);
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
 
         // Update equality constraint in quadratic test
         this->executor().EltwiseSubMod(bind_batch_equal_sub_);
@@ -1456,9 +1414,9 @@ struct nonbatch_verifier_context
         pop_sample(device_y_);
         pop_sample(device_z_);
 
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_x_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_y_);
-        this->executor().sha256_digest_update(bind_sha256_ctx_, bind_sha256_z_);
+        this->executor().sha256_digest_update(bind_sha256_x_);
+        this->executor().sha256_digest_update(bind_sha256_y_);
+        this->executor().sha256_digest_update(bind_sha256_z_);
 
         check_code(bind_code_check_x_);
         check_code(bind_code_check_y_);
@@ -1468,7 +1426,7 @@ struct nonbatch_verifier_context
     }
 
     std::vector<digest_type> flush_digests() {
-        this->executor().sha256_digest_final(bind_sha256_ctx_);
+        this->executor().sha256_digest_final(bind_sha256_x_);
         return this->executor().template copy_to_host<digest_type>(sha256_digest_);
     }
 
@@ -1482,22 +1440,20 @@ protected:
     std::vector<uint32_t> host_samplings_;
     std::vector<uint64_t> limbs_;
 
-    InputArchive& ia_;
+    boost::archive::binary_iarchive& ia_;
 
     buffer_t code_, linear_, quad_;
     buffer_t tmp1_, tmp2_;
     buffer_t sample_rand_x_, sample_rand_y_, sample_rand_z_;
     buffer_t device_x_, device_y_, device_z_;
     buffer_t device_rand_x_, device_rand_y_, device_rand_z_;
-    buffer_t sha256_context_, sha256_digest_;
+    buffer_t sha256_digest_;
 
     webgpu_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
     webgpu_binding bind_ntt_rand_x_, bind_ntt_rand_y_, bind_ntt_rand_z_;
     webgpu_binding bind_sample_rand_x_, bind_sample_rand_y_, bind_sample_rand_z_;
 
-    webgpu_binding bind_sha256_ctx_;
     webgpu_binding bind_sha256_x_, bind_sha256_y_, bind_sha256_z_;
-
     webgpu_binding bind_code_check_x_, bind_code_check_y_, bind_code_check_z_;
     webgpu_binding bind_linear_check_x_, bind_linear_check_y_, bind_linear_check_z_;
     webgpu_binding bind_quadratic_check_mul_, bind_quadratic_check_sub_, bind_quadratic_check_fma_;

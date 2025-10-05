@@ -13,7 +13,7 @@
 #include "portable_binary_oarchive.hpp"
 
 void
-portable_binary_oarchive::save_impl(
+boost::archive::portable_binary_oarchive::save_impl(
     const boost::intmax_t l,
     const char maxsize
 ){
@@ -57,7 +57,7 @@ portable_binary_oarchive::save_impl(
 }
 
 void
-portable_binary_oarchive::init(unsigned int flags) {
+boost::archive::portable_binary_oarchive::init(unsigned int flags) {
     if(m_flags == (endian_big | endian_little)){
         boost::serialization::throw_exception(
             portable_binary_oarchive_exception()

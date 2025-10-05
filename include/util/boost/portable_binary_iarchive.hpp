@@ -45,7 +45,9 @@
 #include <boost/archive/detail/common_iarchive.hpp>
 #include <boost/archive/detail/register_archive.hpp>
 
-#include "portable_binary_archive.hpp"
+#include <util/boost/portable_binary_archive.hpp>
+
+namespace boost::archive {
 
 /////////1/////////2/////////3/////////4/////////5/////////6/////////7/////////8
 // exception to be thrown if integer read from archive doesn't fit
@@ -78,7 +80,7 @@ public:
 };
 
 /////////1/////////2/////////3/////////4/////////5/////////6/////////7/////////8
-// "Portable" input binary archive.  It addresses integer size and endianness so
+// "Portable" input binary archive.  It addresses integer size and endienness so
 // that binary archives can be passed across systems. Note:floating point types
 // not addressed here
 class portable_binary_iarchive :
@@ -204,6 +206,8 @@ public:
         init(flags);
     }
 };
+
+} // namespace boost::archive
 
 // required by export in boost version > 1.34
 #ifdef BOOST_SERIALIZATION_REGISTER_ARCHIVE

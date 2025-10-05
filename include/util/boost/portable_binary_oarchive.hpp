@@ -44,7 +44,9 @@
 #include <boost/archive/detail/common_oarchive.hpp>
 #include <boost/archive/detail/register_archive.hpp>
 
-#include "portable_binary_archive.hpp"
+#include <util/boost/portable_binary_archive.hpp>
+
+namespace boost::archive {
 
 /////////1/////////2/////////3/////////4/////////5/////////6/////////7/////////8
 // exception to be thrown if integer read from archive doesn't fit
@@ -53,15 +55,15 @@ class portable_binary_oarchive_exception :
     public boost::archive::archive_exception
 {
 public:
-    typedef enum {
+    enum exception_code {
         invalid_flags
-    } exception_code;
-    portable_binary_oarchive_exception(exception_code c = invalid_flags )
+    };
+    portable_binary_oarchive_exception(exception_code c = invalid_flags)
     {}
     virtual const char *what( ) const throw( )
     {
         const char *msg = "programmer error";
-        switch((int)code){
+        switch(static_cast<exception_code>(code)){
         case invalid_flags:
             msg = "cannot be both big and little endian";
         default:
@@ -73,7 +75,7 @@ public:
 
 /////////1/////////2/////////3/////////4/////////5/////////6/////////7/////////8
 // "Portable" output binary archive.  This is a variation of the native binary
-// archive. it addresses integer size and endianness so that binary archives can
+// archive. it addresses integer size and endienness so that binary archives can
 // be passed across systems. Note:floating point types not addressed here
 
 class portable_binary_oarchive :
@@ -191,6 +193,7 @@ public:
     }
 };
 
+} // namespace boost::archive
 
 // required by export in boost version > 1.34
 #ifdef BOOST_SERIALIZATION_REGISTER_ARCHIVE

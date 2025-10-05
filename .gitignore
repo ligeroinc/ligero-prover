@@ -2,8 +2,6 @@
 .idea
 *.log
 tmp/
-proof.data
 build/
 build-web/
 sdk/build/
-sdk/rust/ligetron/target

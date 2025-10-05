@@ -143,9 +143,9 @@ From a convenient location:
 ```bash
 git clone https://dawn.googlesource.com/dawn
 cd dawn/
-git checkout cec4482eccee45696a7c0019e750c77f101ced04
+git checkout 41d631c0cbcd46ddc723222fc80890f4305dbc65
 mkdir release && cd release
-cmake -DDAWN_FETCH_DEPENDENCIES=ON -DDAWN_BUILD_MONOLITHIC_LIBRARY=STATIC -DDAWN_ENABLE_INSTALL=ON -DCMAKE_BUILD_TYPE=Release ..
+cmake -DDAWN_FETCH_DEPENDENCIES=ON -DDAWN_ENABLE_INSTALL=ON -DCMAKE_BUILD_TYPE=Release ..
 make -j
 make install
 ```
@@ -198,8 +198,21 @@ cd ligetron
 ```
 
 ---
+### Build the SDK
 
-### Build the native version of the Prover/Verifier
+The SDK must be built before attempting to make Native or Web ligetron. [Step by step instructions here](https://github.com/ligeroinc/ligetron/blob/main/sdk/README.md)
+
+From the project root
+```bash
+cd sdk
+mkdir build && cd build
+emcmake cmake ..
+make -j
+```
+
+---
+
+### Build Native
 
 From the root directory:
 ```bash
@@ -209,9 +222,8 @@ make -j
 ```
 
 ---
-### Build the web version of the Prover/Verifier
+### Build Web
 
-From the root directory:
 ``` bash
 mkdir -p build-web && cd build-web
 cmake -DCMAKE_BUILD_TYPE=Web -DCMAKE_PREFIX_PATH=<path-to-dependencies> ..
@@ -219,26 +231,6 @@ make -j
 ```
 
 ---
-### Build the C++ version of the SDK
-
-[Step by step instructions here](https://github.com/ligeroinc/ligetron/blob/main/sdk/cpp/README.md)
-
-From the project root
-```bash
-cd sdk/cpp
-mkdir build && cd build
-emcmake cmake ..
-make -j
-```
-
----
-### Build the Rust version of the SDK
-
-From the project root
-```bash
-cd sdk/rust
-cargo build --target wasm32-wasip1 --release
-```
 
 ## Running the Prover/Verifier
 

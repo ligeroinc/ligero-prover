@@ -80,9 +80,7 @@ struct wasi_preview1_module : public host_module {
             ctx_->memory_store(argv, argv_buffer);
             argv += sizeof(u32);
 
-            std::memcpy(ctx_->memory_data().data() + argv_buffer,
-                        args_[i].data(),
-                        args_[i].size());
+            std::memcpy(ctx_->memory() + argv_buffer, args_[i].data(), args_[i].size());
 
             // std::cout << "argv[" << i << "] = " << mem8 + argv_buffer << std::endl;
 
@@ -129,8 +127,7 @@ struct wasi_preview1_module : public host_module {
             ctx_->memory_store(environ_ptr, environ_buffer);
             environ_ptr += sizeof(u32);
 
-            std::strcpy(reinterpret_cast<char*>(ctx_->memory_data().data() + environ_buffer),
-                        *env);
+            std::strcpy(reinterpret_cast<char*>(ctx_->memory() + environ_buffer), *env);
             environ_buffer += std::strlen(*env) + 1;  // include null terminator
         }
 
@@ -144,7 +141,7 @@ struct wasi_preview1_module : public host_module {
         u32 iovec_ptr  = ctx_->stack_pop().as_u32();
         u32 fd         = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory_data().data();
+        auto *mem = ctx_->memory();
         u32* nread = reinterpret_cast<u32*>(mem + nread_ptr);
 
         struct iovec iovec[iovec_len];
@@ -170,7 +167,7 @@ struct wasi_preview1_module : public host_module {
         u32 iovec_ptr  = ctx_->stack_pop().as_u32();
         u32 fd         = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory_data().data();
+        auto *mem = ctx_->memory();
         u32* nwrite = reinterpret_cast<u32*>(mem + nwrite_ptr);
 
         struct iovec iovec[iovec_len];
@@ -201,7 +198,7 @@ struct wasi_preview1_module : public host_module {
         u32 buf_len = ctx_->stack_pop().as_u32();
         u32 buf_ptr = ctx_->stack_pop().as_u32();
 
-        u8* buf = ctx_->memory_data().data() + buf_ptr;
+        u8* buf = ctx_->memory() + buf_ptr;
 
         std::uniform_int_distribution<> dist(0, 255);
         auto gen = [&] { return static_cast<u8>(dist(rand_)); };

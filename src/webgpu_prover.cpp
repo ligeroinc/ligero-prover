@@ -27,26 +27,20 @@
 #include <runtime.hpp>
 #include <wgpu.hpp>
 
-#include <util/portable_sample.hpp>
-#include <util/boost/portable_binary_oarchive.hpp>
 #include <zkp/common.hpp>
 #include <zkp/finite_field_gmp.hpp>
 #include <zkp/nonbatch_context.hpp>
 #include <interpreter.hpp>
 
-#include <boost/algorithm/hex.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
-#include <boost/iostreams/device/back_inserter.hpp>
-#include <wabt/error-formatter.h>
 #include <wabt/wast-parser.h>
+#include <boost/algorithm/hex.hpp>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 
+using namespace wabt;
 using namespace ligero;
 using namespace ligero::vm;
-namespace io = boost::iostreams;
 namespace fs = std::filesystem;
 
 using field_t = zkp::bn254_gmp;
@@ -56,18 +50,16 @@ using buffer_t = typename executor_t::buffer_type;
 constexpr bool enable_RAM = false;
 
 int main(int argc, const char *argv[]) {
-    const std::string ligero_version_string =
-        std::format("ligero-prover v{}.{}.{}+{}.{}",
-                    LIGETRON_VERSION_MAJOR,
-                    LIGETRON_VERSION_MINOR,
-                    LIGETRON_VERSION_PATCH,
-                    LIGETRON_GIT_BRANCH,
-                    LIGETRON_GIT_COMMIT_HASH);
-    std::cout << ligero_version_string << std::endl;
+    std::cout << std::format("ligero-prover v{}.{}.{}+{}.{}",
+                             LIGETRON_VERSION_MAJOR,
+                             LIGETRON_VERSION_MINOR,
+                             LIGETRON_VERSION_PATCH,
+                             LIGETRON_GIT_BRANCH,
+                             LIGETRON_GIT_COMMIT_HASH)
+              << std::endl;
     
     std::vector<std::vector<u8>> input_args;
     std::string shader_path;
-    std::string proof_name = "proof_data.gz";
 
     if (argc < 2) {
         std::cerr << "Error: No JSON input provided" << std::endl;
@@ -85,9 +77,9 @@ int main(int argc, const char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    uint64_t k = params::default_row_size;
-    uint64_t l = params::default_packing_size;
-    uint64_t n = params::default_encoding_size;
+    size_t k = params::default_row_size;
+    size_t l = params::default_packing_size;
+    size_t n = params::default_encoding_size;
     
     if (jconfig.contains("packing")) {
         uint64_t packing = jconfig["packing"];
@@ -139,15 +131,10 @@ int main(int argc, const char *argv[]) {
                 input_args.emplace_back(std::move(hex_vec));
             }
             else {
-                std::cerr << "Error: Invalid args type: " << arg.dump() << std::endl;
-                exit(EXIT_FAILURE);
+                std::cerr << "Invalid args type: " << arg.dump() << std::endl;
+                exit(-1);
             }
         }
-    }
-
-    std::unordered_set<int> indices_set;
-    if (jconfig.contains("private-indices")) {
-        indices_set = jconfig["private-indices"].template get<std::unordered_set<int>>();
     }
 
     fs::path program_name;
@@ -155,54 +142,46 @@ int main(int argc, const char *argv[]) {
         program_name = jconfig["program"].template get<std::string>();
     }
 
-    // Reading and parsing the wasm file
+    if (program_name.empty() || !fs::exists(program_name)) {
+        LIGERO_LOG_FATAL << std::format("File {} does not exist!", program_name.c_str());
+        exit(EXIT_FAILURE);
+    }
+    
+    std::ifstream fs(program_name, std::ios::binary);
+    std::stringstream ss;
+    ss << fs.rdbuf();
+    const std::string content = ss.str();
+    
+    std::unordered_set<int> indices_set;
+    if (jconfig.contains("private-indices")) {
+        indices_set = jconfig["private-indices"].template get<std::unordered_set<int>>();
+    }
+
     // ------------------------------------------------------------
-    std::unique_ptr<wabt::Module> wabt_module{ new wabt::Module{} };
-    {
-        std::vector<uint8_t> program_data;
-        wabt::Result read_result = wabt::ReadFile(program_name.c_str(), &program_data);
+    Result   wabt_result;
+    Features wabt_features;
+    std::unique_ptr<Module> wabt_module{ new Module{} };
+    
+    if (program_name.extension() == ".wat" || program_name.extension() == ".wast") {
+        Errors errors;
+        std::unique_ptr<WastLexer> lexer = WastLexer::CreateBufferLexer(
+            program_name.c_str(), content.data(), content.size(), &errors);
 
-        if (wabt::Failed(read_result)) {
-            std::cerr << std::format("Error: Could not read from file \"{}\"",
-                                     program_name.c_str())
-                      << std::endl;
-            exit(EXIT_FAILURE);
-        }
+        WastParseOptions parse_wast_options(wabt_features);
+        wabt_result = ParseWatModule(lexer.get(), &wabt_module, &errors, &parse_wast_options);
+    }
+    else {
+        wabt_result = ReadBinaryIr(program_name.c_str(),
+                                   content.data(),
+                                   content.size(),
+                                   ReadBinaryOptions{},
+                                   nullptr,
+                                   wabt_module.get());
+    }
 
-        wabt::Features wabt_features;
-        wabt::Result   parsing_result;
-        wabt::Errors   parsing_errors;
-        if (program_name.extension() == ".wat" || program_name.extension() == ".wast") {
-            std::unique_ptr<wabt::WastLexer> lexer = wabt::WastLexer::CreateBufferLexer(
-                program_name.c_str(),
-                program_data.data(),
-                program_data.size(),
-                &parsing_errors);
-
-            wabt::WastParseOptions parse_wast_options(wabt_features);
-            parsing_result = wabt::ParseWatModule(lexer.get(),
-                                                  &wabt_module,
-                                                  &parsing_errors,
-                                                  &parse_wast_options);
-        }
-        else {
-            parsing_result = wabt::ReadBinaryIr(program_name.c_str(),
-                                                program_data.data(),
-                                                program_data.size(),
-                                                wabt::ReadBinaryOptions{},
-                                                &parsing_errors,
-                                                wabt_module.get());
-        }
-
-        if (wabt::Failed(parsing_result)) {
-            auto err_msg = wabt::FormatErrorsToString(parsing_errors,
-                                                      wabt::Location::Type::Binary);
-            std::cerr << std::format("wabt: {}", err_msg)
-                      << std::format("Error: Failed to parse WASM module \"{}\"",
-                                     program_name.c_str())
-                      << std::endl;
-            exit(EXIT_FAILURE);
-        }
+    if (Failed(wabt_result)) {
+        LIGERO_LOG_FATAL << std::format("Failed to parse WASM module {}", program_name.c_str());
+        exit(EXIT_FAILURE);
     }
 
     auto [omega_k, omega_2k, omega_4k] = field_t::generate_omegas(k, n);
@@ -249,9 +228,6 @@ int main(int argc, const char *argv[]) {
     std::cout << "----------------------------------------" << std::endl;
 
     t1.stop();
-
-    executor.device_synchronize();
-    ctx.reset();
 
     // stage1.5 (for RAM only)
     // -------------------------------------------------------------------------------- //
@@ -312,14 +288,45 @@ int main(int argc, const char *argv[]) {
     zkp::hash_random_engine<params::hasher> engine(stage2_seed);
     std::vector<size_t> indexes(n), sample_index;
     std::iota(indexes.begin(), indexes.end(), 0);
-    portable_sample(indexes.begin(), indexes.end(),
-                    std::back_inserter(sample_index),
-                    params::sample_size,
-                    engine);
-    std::sort(sample_index.begin(), sample_index.end());
+    std::sample(indexes.cbegin(), indexes.cend(),
+                std::back_inserter(sample_index),
+                params::sample_size,
+                engine);
 
     auto decommit = tree.decommit(sample_index);
 
+    std::cout << "----------------------------------------" << std::endl;
+
+    // Stage 3
+    // -------------------------------------------------------------------------------- //
+    std::cout << "Start Stage 3" << std::endl;
+
+    auto t3 = make_timer("stage3");
+
+    std::ofstream proof("proof.data", std::ios::out | std::ios::binary | std::ios::trunc);
+    boost::archive::binary_oarchive oa(proof);
+    
+    oa << stage1_root
+       << stage2_seed
+       << encoded_code_limbs
+       << encoded_linear_limbs
+       << encoded_quad_limbs
+       << decommit;
+
+    auto ctx3 = std::make_unique<
+        zkp::nonbatch_stage3_context<field_t, executor_t, zkp::stage3_random_policy>>(
+            executor,
+            sample_index,
+            oa);
+    ctx3->init_encoding_random(encoding_random_seed, params::any_iv);
+
+    run_program(*wabt_module, *ctx3, input_args, indices_set);
+
+    t3.stop();
+
+    proof.close();
+
+    // ================================================================================
     auto bind_ntt_pc = executor.bind_ntt(code_poly);
     auto bind_ntt_pl = executor.bind_ntt(linear_poly);
     auto bind_ntt_pq = executor.bind_ntt(quad_poly);
@@ -349,58 +356,6 @@ int main(int argc, const char *argv[]) {
                            sizeof(uint32_t),
                            field_t::num_u32_limbs);
     host_quad.resize(l);
-
-    executor.device_synchronize();
-    ctx2.reset();
-
-    std::cout << "----------------------------------------" << std::endl;
-
-    // Stage 3
-    // -------------------------------------------------------------------------------- //
-    std::cout << "Start Stage 3" << std::endl;
-
-    std::stringstream compressed_proof;
-    {
-        auto t3 = make_timer("stage3");
-
-        constexpr int gzip_compression_level = 6;
-        io::filtering_ostream proof_stream;
-        proof_stream.push(io::gzip_compressor(io::gzip_params(gzip_compression_level)));
-        proof_stream.push(compressed_proof);
-        portable_binary_oarchive oa(proof_stream);
-    
-        oa << stage1_root
-           << stage2_seed
-           << encoded_code_limbs
-           << encoded_linear_limbs
-           << encoded_quad_limbs
-           << decommit;
-
-        auto ctx3 = std::make_unique<
-            zkp::nonbatch_stage3_context<field_t,
-                                         executor_t,
-                                         zkp::stage3_random_policy,
-                                         portable_binary_oarchive>>(executor,
-                                                                    sample_index,
-                                                                    oa);
-        ctx3->init_encoding_random(encoding_random_seed, params::any_iv);
-
-        run_program(*wabt_module, *ctx3, input_args, indices_set);
-    }
-
-    std::ofstream proof_file(proof_name,
-                             std::ios::out | std::ios::binary | std::ios::trunc);
-
-    if (!proof_file) {
-        std::cerr << std::format("Error: Could not write to file \"{}\"", proof_name)
-                  << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    proof_file << compressed_proof.rdbuf();
-    proof_file.close();
-
-    // ================================================================================
 
     std::cout << std::boolalpha;
 
