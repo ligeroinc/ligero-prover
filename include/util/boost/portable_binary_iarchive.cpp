@@ -18,7 +18,7 @@
 #include "portable_binary_iarchive.hpp"
 
 void
-boost::archive::portable_binary_iarchive::load_impl(boost::intmax_t & l, char maxsize){
+portable_binary_iarchive::load_impl(boost::intmax_t & l, char maxsize){
     char size;
     l = 0;
     this->primitive_base_t::load(size);
@@ -54,7 +54,7 @@ boost::archive::portable_binary_iarchive::load_impl(boost::intmax_t & l, char ma
 }
 
 void
-boost::archive::portable_binary_iarchive::load_override(
+portable_binary_iarchive::load_override(
     boost::archive::class_name_type & t
 ){
     std::string cn;
@@ -71,7 +71,7 @@ boost::archive::portable_binary_iarchive::load_override(
 }
 
 void
-boost::archive::portable_binary_iarchive::init(unsigned int flags){
+portable_binary_iarchive::init(unsigned int flags){
     if(0 == (flags & boost::archive::no_header)){
         // read signature in an archive version independent manner
         std::string file_signature;

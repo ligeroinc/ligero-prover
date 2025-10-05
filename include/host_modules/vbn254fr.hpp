@@ -94,12 +94,16 @@ struct vbn254fr_module : public host_module {
 
     u32 load_vbn254(u32 vbn254_addr) {
         u32 offset = 0;
-        std::memcpy(&offset, ctx_->memory() + vbn254_addr, sizeof(offset));
+        std::memcpy(&offset, ctx_->memory_data().data() + vbn254_addr, sizeof(offset));
         return offset;
     }
 
     void store_vbn254(u32 vbn254_addr, u32 idx) {
-        std::memcpy(ctx_->memory() + vbn254_addr, &idx, sizeof(idx));
+        std::memcpy(ctx_->memory_data().data() + vbn254_addr, &idx, sizeof(idx));
+
+        // The BN254 handle we store here is public,
+        // Ensure the written range is not marked secret.
+        ctx_->memory().unmark_closed(vbn254_addr, vbn254_addr + sizeof(idx));
     }
 
     void vbn254fr_deallocate(u32 offset) {
@@ -135,7 +139,7 @@ struct vbn254fr_module : public host_module {
         u32 ui_ptr  = ctx_->stack_pop().as_u32();
         u32 fp_addr = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
 
         u32 fp_handle = load_vbn254(fp_addr);
         u32 *mem32 = reinterpret_cast<u32*>(mem + ui_ptr);
@@ -154,7 +158,7 @@ struct vbn254fr_module : public host_module {
         u32 ui      = ctx_->stack_pop().as_u32();
         u32 fp_addr = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
 
         u32 fp_handle = load_vbn254(fp_addr);
         buffer_t x = get_buffer_from_offset(fp_handle);
@@ -173,7 +177,7 @@ struct vbn254fr_module : public host_module {
 
         assert(len <= executor_.message_size());
 
-        const auto *mem = ctx_->memory();
+        const auto *mem = ctx_->memory_data().data();
         u32 handle = load_vbn254(fp_addr);
         buffer_t x = get_buffer_from_offset(handle);
 
@@ -202,7 +206,7 @@ struct vbn254fr_module : public host_module {
         u32 str_addr = ctx_->stack_pop().as_u32();
         u32 fp_addr  = ctx_->stack_pop().as_u32();
 
-        const auto *mem = ctx_->memory();
+        const auto *mem = ctx_->memory_data().data();
         u32 handle = load_vbn254(fp_addr);
         buffer_t x = get_buffer_from_offset(handle);
 
@@ -227,7 +231,7 @@ struct vbn254fr_module : public host_module {
 
         assert(len <= executor_.message_size());
 
-        const auto *mem = ctx_->memory();
+        const auto *mem = ctx_->memory_data().data();
         u32 handle = load_vbn254(fp_addr);
         const u8 *bytes = reinterpret_cast<const u8*>(mem + bytes_ptr);
 
@@ -253,7 +257,7 @@ struct vbn254fr_module : public host_module {
 
         assert(len <= executor_.message_size());
 
-        const auto *mem = ctx_->memory();
+        const auto *mem = ctx_->memory_data().data();
         u32 handle = load_vbn254(fp_addr);
         const u8 *bytes = reinterpret_cast<const u8*>(mem + bytes_ptr);
 
@@ -270,7 +274,7 @@ struct vbn254fr_module : public host_module {
         u32 in_addr  = ctx_->stack_pop().as_u32();
         u32 out_addr = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
 
         u32 in_handle  = load_vbn254(in_addr);
         u32 out_handle = load_vbn254(out_addr);
@@ -293,7 +297,7 @@ struct vbn254fr_module : public host_module {
         u32 base = ctx_->stack_pop().as_u32();
         u32 addr = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         u32 handle = load_vbn254(addr);
         buffer_t x = get_buffer_from_offset(handle);
 
@@ -325,7 +329,7 @@ struct vbn254fr_module : public host_module {
         u32 str_addr = ctx_->stack_pop().as_u32();
         u32 out_addr = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         const char *str = reinterpret_cast<const char *>(mem) + str_addr;
 
         mpz_class m;
@@ -368,7 +372,7 @@ struct vbn254fr_module : public host_module {
         u32 out_offset = load_vbn254(out_addr);
         u32 x_offset   = load_vbn254(x_addr);
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
         mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(uint32_t), 0, 0, k);
@@ -401,7 +405,7 @@ struct vbn254fr_module : public host_module {
         u32 out_offset = load_vbn254(out_addr);
         u32 x_offset   = load_vbn254(x_addr);
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
         mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
@@ -421,7 +425,7 @@ struct vbn254fr_module : public host_module {
         u32 out_offset = load_vbn254(out_addr);
         u32 x_offset   = load_vbn254(x_addr);
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
         mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
@@ -467,7 +471,7 @@ struct vbn254fr_module : public host_module {
         u32 out_offset = load_vbn254(out_addr);
         u32 x_offset   = load_vbn254(x_addr);
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
         mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
@@ -487,7 +491,7 @@ struct vbn254fr_module : public host_module {
         u32 out_offset = load_vbn254(out_addr);
         u32 x_offset   = load_vbn254(x_addr);
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
         mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
@@ -523,7 +527,7 @@ struct vbn254fr_module : public host_module {
         u32 y_addr   = ctx_->stack_pop().as_u32();
         u32 x_addr   = ctx_->stack_pop().as_u32();
 
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
 
         u32 x_offset   = load_vbn254(x_addr);
         u32 y_offset   = load_vbn254(y_addr);

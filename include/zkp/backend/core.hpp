@@ -66,6 +66,9 @@ struct managed_witness : zkexpr_base {
     lazy_witness*       get()       { return data_.get(); }
     const lazy_witness* get() const { return data_.get(); }
 
+    auto&       data()       { return data_; }
+    const auto& data() const { return data_; }
+
     template <typename T>
     void val(const T& v) { mpz_assign(*data_->value_ptr(), v); }
     const mpz_class& val() const { return *data_->value_ptr(); }
@@ -92,6 +95,13 @@ struct decomposed_bits {
     decomposed_bits() = default;
     decomposed_bits(std::vector<managed_witness> bits) : bits_(std::move(bits)) { }
 
+    ~decomposed_bits() {
+        // Enforce reverse-order destruction of elements
+        while (!bits_.empty()) {
+            bits_.pop_back();
+        }
+    }
+
     size_t size() const { return bits_.size(); }
 
     const managed_witness& operator[](size_t i) const { return bits_[i]; }
@@ -110,6 +120,11 @@ struct decomposed_bits {
     
     void drop_lsb(size_t n) {
         assert(n <= size());
+
+        // Enforce reverse-order destruction by manually calling `reset()`
+        for (int i = n - 1; i >= 0; --i) {
+            bits_[i].data().reset();
+        }
         bits_.erase(bits_.begin(), bits_.begin() + n);
     }
 
@@ -119,7 +134,11 @@ struct decomposed_bits {
 
     void drop_msb(size_t n) {
         assert(n <= size());
-        bits_.resize(size() - n);
+
+        // Enforce reverse-order destruction by manually calling `pop_back()`
+        for (size_t i = 0; i < n; i++) {
+            bits_.pop_back();
+        }
     }
 
 private:

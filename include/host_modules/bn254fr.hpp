@@ -36,15 +36,18 @@ struct bn254fr_module : public host_module {
     bn254fr_module(Context *ctx) : ctx_(ctx) { }
 
     zkp::lazy_witness* load_bn254(u32 bn254_addr) {
-        uintptr_t ptr = 0;
-        std::memcpy(&ptr, ctx_->memory() + bn254_addr, sizeof(ptr));
+        uintptr_t ptr = ctx_->template memory_load<uintptr_t>(bn254_addr);
         zkp::lazy_witness* ret = std::bit_cast<zkp::lazy_witness*>(ptr);
         return ret;
     }
 
     void store_bn254(u32 bn254_addr, zkp::lazy_witness *ptr) {
         uintptr_t val = std::bit_cast<uintptr_t>(ptr);
-        std::memcpy(ctx_->memory() + bn254_addr, &val, sizeof(val));
+        ctx_->memory_store(bn254_addr, val);
+
+        // The BN254 handle we store here is public,
+        // Ensure the written range is not marked secret.
+        ctx_->memory().unmark_closed(bn254_addr, bn254_addr + sizeof(val));
     }
 
     void bn254fr_alloc() {
@@ -128,6 +131,65 @@ struct bn254fr_module : public host_module {
         ctx_->backend().manager().constrain_quadratic_constant(*out, *x, *y->value_ptr());
     }
 
+    void bn254fr_to_bits_checked() {
+        u32 bitcount = ctx_->stack_pop().as_u32();
+        u32 x_addr   = ctx_->stack_pop().as_u32();
+        u32 arr_addr = ctx_->stack_pop().as_u32();
+
+        auto *x = load_bn254(x_addr);
+        x->set_witness_status(true);
+
+        auto *rand = ctx_->backend().manager().acquire_mpz();
+        ctx_->backend().manager().generate_linear_random(*rand);
+        ctx_->backend().manager().witness_sub_random(*x, *rand);
+
+        auto *tmp = ctx_->backend().manager().acquire_mpz();
+
+        for (size_t i = 0; i < bitcount; i++) {
+            auto *bit = load_bn254(arr_addr + i * sizeof(uint64_t));
+            *bit->value_ptr() = mpz_tstbit(x->value_ptr()->get_mpz_t(), i);
+            bit->set_witness_status(true);
+
+            ctx_->backend().manager().constrain_bit(bit);
+
+            *tmp = *rand << i;
+            Field::reduce(*tmp, *tmp);
+            ctx_->backend().manager().witness_add_random(*bit, *tmp);
+        }
+
+        ctx_->backend().manager().recycle_mpz(tmp);
+        ctx_->backend().manager().recycle_mpz(rand);
+    }
+
+    void bn254fr_from_bits_checked() {
+        u32 bitcount = ctx_->stack_pop().as_u32();
+        u32 arr_addr = ctx_->stack_pop().as_u32();
+        u32 x_addr   = ctx_->stack_pop().as_u32();
+
+        auto *x = load_bn254(x_addr);
+        x->set_witness_status(true);
+
+        auto *rand = ctx_->backend().manager().acquire_mpz();
+        ctx_->backend().manager().generate_linear_random(*rand);
+        ctx_->backend().manager().witness_sub_random(*x, *rand);
+
+        auto *tmp = ctx_->backend().manager().acquire_mpz();
+
+        for (size_t i = 0; i < bitcount; i++) {
+            auto *bit = load_bn254(arr_addr + i * sizeof(uint64_t));
+            bit->set_witness_status(true);
+            *tmp = *bit->value_ptr() << i;
+            *x->value_ptr() += *tmp;
+
+            *tmp = *rand << i;
+            Field::reduce(*tmp, *tmp);
+            ctx_->backend().manager().witness_add_random(*bit, *tmp);
+        }
+
+        ctx_->backend().manager().recycle_mpz(tmp);
+        ctx_->backend().manager().recycle_mpz(rand);
+    }
+
     void bn254fr_set_u32() {
         u32 ui         = ctx_->stack_pop().as_u32();
         u32 bn254_addr = ctx_->stack_pop().as_u32();
@@ -149,7 +211,7 @@ struct bn254fr_module : public host_module {
         u32 size       = ctx_->stack_pop().as_u32();
         u32 data_addr  = ctx_->stack_pop().as_u32();
         u32 bn254_addr = ctx_->stack_pop().as_u32();
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
 
         auto *wit = load_bn254(bn254_addr);
         mpz_import(wit->value_ptr()->get_mpz_t(),
@@ -165,7 +227,7 @@ struct bn254fr_module : public host_module {
         u32 base       = ctx_->stack_pop().as_u32();
         u32 str_addr   = ctx_->stack_pop().as_u32();
         u32 bn254_addr = ctx_->stack_pop().as_u32();
-        auto *mem = ctx_->memory();
+        auto *mem = ctx_->memory_data().data();
 
         auto *wit = load_bn254(bn254_addr);
         int failed = mpz_set_str(wit->value_ptr()->get_mpz_t(),
@@ -532,10 +594,20 @@ struct bn254fr_module : public host_module {
 
         auto *x = load_bn254(x_addr);
         for (size_t i = 0; i < bitcount; i++) {
-        //    u32 bi_addr = *(reinterpret_cast<const u32*>(ctx_->memory() + arr_addr) + i);
-        //    auto *bi = load_bn254(bi_addr);
             auto *bi = load_bn254(arr_addr + i * sizeof(uint64_t));
             *bi->value_ptr() = (*x->value_ptr()) >> i & 1u;
+        }
+    }
+
+    void bn254fr_from_bits() {
+        u32 bitcount = ctx_->stack_pop().as_u32();
+        u32 arr_addr = ctx_->stack_pop().as_u32();
+        u32 x_addr   = ctx_->stack_pop().as_u32();
+
+        auto *x = load_bn254(x_addr);
+        for (size_t i = 0; i < bitcount; i++) {
+            auto *bi = load_bn254(arr_addr + i * sizeof(uint64_t));
+            *x->value_ptr() |= *bi->value_ptr() << i;
         }
     }
 
@@ -558,6 +630,9 @@ struct bn254fr_module : public host_module {
             { "bn254fr_assert_add",         &Self::bn254fr_assert_add         },
             { "bn254fr_assert_mul",         &Self::bn254fr_assert_mul         },
             { "bn254fr_assert_mulc",        &Self::bn254fr_assert_mulc        },
+
+            { "bn254fr_to_bits_checked",    &Self::bn254fr_to_bits_checked    },
+            { "bn254fr_from_bits_checked",  &Self::bn254fr_from_bits_checked  },
 
             { "bn254fr_addmod",             &Self::bn254fr_addmod             },
             { "bn254fr_submod",             &Self::bn254fr_submod             },
@@ -585,6 +660,7 @@ struct bn254fr_module : public host_module {
             { "bn254fr_bnot",               &Self::bn254fr_bnot               },
 
             { "bn254fr_to_bits",            &Self::bn254fr_to_bits            },
+            { "bn254fr_from_bits",          &Self::bn254fr_from_bits          },
 
             { "bn254fr_shrmod",             &Self::bn254fr_shrmod             },
             { "bn254fr_shlmod",             &Self::bn254fr_shlmod             },

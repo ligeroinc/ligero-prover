@@ -39,8 +39,6 @@
 #include <boost/archive/basic_archive.hpp>
 #include <boost/predef/other/endian.h>
 
-namespace boost::archive {
-
 enum portable_binary_archive_flags {
     endian_big        = 0x4000,
     endian_little     = 0x8000
@@ -60,7 +58,5 @@ reverse_bytes(char size, char *address){
         *first = x;
     }
 }
-
-} // namespace boost::archive
 
 #endif // PORTABLE_BINARY_ARCHIVE_HPP

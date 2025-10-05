@@ -123,6 +123,44 @@ struct memory_instance {
     bool contains_secret(u32 x) {
         return icl::contains(secret_set_, x);
     }
+
+    void memcpy_secrets(u32 dst, const u32 src, size_t count) {
+        if (src + count > data.size()) {
+            throw wasm_trap("memcpy_secrets: src out of range");
+        }
+
+        if (dst + count > data.size()) {
+            throw wasm_trap("memcpy_secrets: dst out of range");
+        }
+
+        // Step 1: Collect all intervals overlap with range [src, src + count)
+        //          and map it to [dst, dst + count)
+        icl::interval_set<u32> dst_secret_set;
+        auto src_range = icl::discrete_interval<u32>::right_open(src, src + count);
+        auto [sec_begin, sec_end] = secret_set_.equal_range(src_range);
+        const u32 offset = dst - src;
+
+        for (auto it = sec_begin; it != sec_end; ++it) {
+            const u32 dst_lower = it->lower() + offset;
+            const u32 dst_upper = it->upper() + offset;
+            auto dst_interval = icl::discrete_interval<u32>::right_open(dst_lower,
+                                                                        dst_upper);
+
+            dst_secret_set += dst_interval;
+        }
+
+        // Step 2: Unmark all secrets within [dst, dst + count)
+        auto dst_range = icl::discrete_interval<u32>::right_open(dst, dst + count);
+        secret_set_ -= dst_range;
+
+        // Step 3: Add the intersection of adjusted src and [dst, dst + count)
+        //         to secret set since the set from step 1 may contain
+        //         out of range intervals.
+        secret_set_ += dst_secret_set & dst_range;
+
+        // Use std::memmove to handle overlapping case
+        std::memmove(data.data() + dst, data.data() + src, count);
+    }
     
     memory_kind kind;
     std::vector<u8> data;
