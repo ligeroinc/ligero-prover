@@ -1852,23 +1852,18 @@ struct opcode_interpreter {
     }
 
     exec_result exec_memory_copy(opcode ins) {
-        auto [dst, src] = decode_index2(ins);
+        auto [dst_index, src_index] = decode_index2(ins);
 
-        auto *f = ctx_.current_frame();
-        address_t a = f->module->memaddrs[dst];
-        auto& mem_dst = ctx_.store()->memorys[a];
-        address_t b = f->module->memaddrs[src];
-        auto& mem_src = ctx_.store()->memorys[b];
+        // Current WASM spec only support one linear memory, so it must be 0
+        assert(src_index == 0);
+        assert(dst_index == 0);
 
-        u32 n = ctx_.stack_pop().as_u32();
-        u32 s = ctx_.stack_pop().as_u32();
-        u32 d = ctx_.stack_pop().as_u32();
+        auto& mem = ctx_.store()->memorys[0];
+        u32 count = ctx_.stack_pop().as_u32();
+        u32 src   = ctx_.stack_pop().as_u32();
+        u32 dst   = ctx_.stack_pop().as_u32();
 
-        if (s + n > mem_src.data.size() or d + n > mem_dst.data.size()) {
-            throw wasm_trap("memory_copy: Invalid address");
-        }
-
-        std::copy_n(mem_src.data.data() + s, n, mem_dst.data.data() + d);
+        mem.memcpy_secrets(dst, src, count);
         return exec_ok();
     }
 
