@@ -5,5 +5,8 @@ tmp/
 proof.data
 build/
 build-web/
-sdk/build/
-sdk/rust/ligetron/target
+sdk/cpp/build/
+sdk/rust/target/
+Cargo.lock
+.clangd
+**/.vscode

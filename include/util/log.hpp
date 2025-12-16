@@ -17,6 +17,8 @@
 #pragma once
 
 #if defined(__EMSCRIPTEN__)
+#include <iostream>
+
 #define LIGERO_LOG_TRACE   std::cout
 #define LIGERO_LOG_DEBUG   std::cout
 #define LIGERO_LOG_INFO    std::cout

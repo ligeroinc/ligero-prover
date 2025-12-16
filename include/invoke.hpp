@@ -21,6 +21,7 @@
 #include <host_modules/bn254fr.hpp>
 #include <host_modules/vbn254fr.hpp>
 #include <host_modules/wasi_preview1.hpp>
+#include <host_modules/uint256.hpp>
 #include <util/timer.hpp>
 #include <interpreter.hpp>
 
@@ -48,6 +49,7 @@ void invoke(module_instance& module,
     ctx.template add_host_module<env_module<Context>>(&ctx);
     ctx.template add_host_module<bn254fr_module<Context>>(&ctx);
     ctx.template add_host_module<vbn254fr_module<Context>>(&ctx);
+    ctx.template add_host_module<uint256_module<Context>>(&ctx);
     // ctx.template add_host_module<zkp::rescue_prime_module<Context>>(&ctx);
 
     // if constexpr (requires { Context::support_RAM; }) {

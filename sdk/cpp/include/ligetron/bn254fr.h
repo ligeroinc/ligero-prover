@@ -96,6 +96,21 @@ typedef __bn254fr bn254fr_t[1];
 LIGETRON_API(bn254fr, bn254fr_assert_equal)
 void bn254fr_assert_equal(const bn254fr_t a, const bn254fr_t b);
 
+/** Assert a == b in the field (constraint only). */
+LIGETRON_API(bn254fr, bn254fr_assert_equal_u32)
+void bn254fr_assert_equal_u32(const bn254fr_t a, uint32_t b);
+
+/** Assert a == b in the field (constraint only). */
+LIGETRON_API(bn254fr, bn254fr_assert_equal_u64)
+void bn254fr_assert_equal_u64(const bn254fr_t a, uint64_t b);
+
+/** Assert a is equal to byte representation in the field (constraint only). */
+LIGETRON_API(bn254fr, bn254fr_assert_equal_bytes)
+void bn254fr_assert_equal_bytes(const bn254fr_t a,
+                                const unsigned char* bytes,
+                                uint32_t len,
+                                int32_t order);
+
 /** Assert out == a + b (enforces a linear constraint). */
 LIGETRON_API(bn254fr, bn254fr_assert_add)
 void bn254fr_assert_add(const bn254fr_t out, const bn254fr_t a, const bn254fr_t b);
@@ -150,6 +165,16 @@ uint64_t bn254fr_get_u64(const bn254fr_t x);
 /** Copy field value from src to dest. */
 LIGETRON_API(bn254fr, bn254fr_copy)
 void bn254fr_copy(bn254fr_t dest, const bn254fr_t src);
+
+/**
+ * Convert field element to bytes
+ * Write up to "len" bytes to buffer (up to 32 bytes).
+ * "order" value:
+ *   -1: use little-endian byte order,
+ *    1: use big-endian byte order
+ */
+LIGETRON_API(bn254fr, bn254fr_to_bytes)
+void bn254fr_to_bytes(unsigned char *out, bn254fr_t x, uint32_t len, int32_t order);
 
 /**
  * Debug print a field element.
@@ -273,6 +298,12 @@ void bn254fr_shlmod(bn254fr_t out, const bn254fr_t a, const bn254fr_t k);
 
 /* --------------- Helper functions --------------- */
 
+/** Set field element to a uint32_t, add constraints. */
+void bn254fr_set_u32_checked(bn254fr_t out, uint32_t x);
+
+/** Set field element to a uint64_t, add constraints. */
+void bn254fr_set_u64_checked(bn254fr_t out, uint64_t x);
+
 /**
  * Set field element from byte buffer.
  * Read "len" bytes from buffer (up to 32 bytes mod p)).
@@ -286,6 +317,15 @@ void bn254fr_set_bytes_little(bn254fr_t out, const unsigned char *bytes, uint32_
  * Set bytes in big-endian order.
  */
 void bn254fr_set_bytes_big(bn254fr_t out, const unsigned char *bytes, uint32_t len);
+
+/**
+ * Set field element from byte buffer and make constraints.
+ * Read "len" bytes from buffer (up to 32 bytes mod p)).
+ */
+void bn254fr_set_bytes_checked(bn254fr_t out,
+                               const unsigned char *bytes,
+                               uint32_t len,
+                               int32_t order);
 
 /**
  * "bn254fr_<operation>_checked" funtions execute corresponding "bn254fr_<operation>" function
@@ -313,9 +353,14 @@ void bn254fr_to_bits_checked(const bn254fr_t *out, const bn254fr_t a, uint32_t c
 LIGETRON_API(bn254fr, bn254fr_from_bits_checked)
 void bn254fr_from_bits_checked(const bn254fr_t out, const bn254fr_t *bits, uint32_t count);
 
+uint64_t bn254fr_get_u64_checked(const bn254fr_t x);
+
+void bn254fr_to_bytes_checked(unsigned char *out, bn254fr_t x, uint32_t len, int32_t order);
+
 /**
  * out = cond ? a1 : a0
  * sets appropriate constraints
+ * cond must be either 0 or 1
  */
 void bn254fr_mux(bn254fr_t out, const bn254fr_t cond, const bn254fr_t a0, const bn254fr_t a1);
 
@@ -324,11 +369,35 @@ void bn254fr_mux(bn254fr_t out, const bn254fr_t cond, const bn254fr_t a0, const 
  * t2 = mux(s1, a2, a3)
  * out = mux(t1, t2)
  * sets appropriate constraints
+ * s0 and s1 must be either 0 or 1
  */
 void bn254fr_mux2(bn254fr_t out,
                 const bn254fr_t s0, const bn254fr_t s1,
                 const bn254fr_t a0, const bn254fr_t a1,
                 const bn254fr_t a2, const bn254fr_t a3);
+
+/** Compute the product of two big integers of `count` limbs each
+    without carry, add constraints.
+    The arrays `a` and `b` must each have length `count`.
+    The `out` array must have length count*2-1.
+*/
+LIGETRON_API(bn254fr, bn254fr_bigint_mul_checked_no_carry)
+void bn254fr_bigint_mul_checked_no_carry(const bn254fr_t* out,
+                                         const bn254fr_t* a,
+                                         const bn254fr_t* b,
+                                         uint32_t count);
+
+/** Convert big integer to proper representation taking into account carry.
+    The `in` array must have length `count`.
+    The `out` array must have length `count + 1`.
+    The bits parameter specifies number of bits in each limb int
+    proper representation and must be <= 126.
+*/
+LIGETRON_API(bn254fr, bn254fr_bigint_convert_to_proper_representation)
+void bn254fr_bigint_convert_to_proper_representation(bn254fr_t* out,
+                                                     bn254fr_t* in,
+                                                     uint32_t count,
+                                                     uint32_t bits);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -72,17 +72,46 @@ void bn254fr_invmod_checked(bn254fr_t out, const bn254fr_t a) {
     bn254fr_free(one);
 }
 
+uint64_t bn254fr_get_u64_checked(const bn254fr_t x) {
+    uint64_t res = witness_cast_u64(bn254fr_get_u64(x));
+    bn254fr_assert_equal_u64(x, res);
+    return res;
+}
+
+void bn254fr_to_bytes_checked(unsigned char *out, bn254fr_t x, uint32_t len, int32_t order) {
+    unsigned char unchecked_bytes[32];
+    bn254fr_to_bytes(unchecked_bytes, x, len, order);
+    for (size_t i = 0; i < len; ++i) {
+        out[i] = witness_cast_u32(static_cast<uint32_t>(unchecked_bytes[i]));
+    }
+
+    bn254fr_assert_equal_bytes(x, out, len, order);
+}
+
+void bn254fr_set_u32_checked(bn254fr_t out, uint32_t x) {
+    bn254fr_set_u32(out, x);
+    bn254fr_assert_equal_u32(out, x);
+}
+
+void bn254fr_set_u64_checked(bn254fr_t out, uint64_t x) {
+    bn254fr_set_u64(out, x);
+    bn254fr_assert_equal_u64(out, x);
+}
+
+void bn254fr_set_bytes_checked(bn254fr_t out,
+                               const unsigned char *bytes,
+                               uint32_t len,
+                               int32_t order) {
+    bn254fr_set_bytes(out, bytes, len, order);
+    bn254fr_assert_equal_bytes(out, bytes, len, order);
+}
+
 void bn254fr_mux(bn254fr_t out, const bn254fr_t cond, const bn254fr_t a0, const bn254fr_t a1) {
     // out = cond ? a1 : a0
 
-    bn254fr_t tmp1, tmp2, one;
-    bn254fr_alloc(one);
+    bn254fr_t tmp1, tmp2;
     bn254fr_alloc(tmp1);
     bn254fr_alloc(tmp2);
-
-    // Assert that cond has a value of ether 0 or 1
-    assert_one(bn254fr_lte(cond, one));
-    bn254fr_free(one);
 
     // Implementing as: out = a0 + cond * (a1 - a0)
     bn254fr_submod_checked(tmp1, a1, a0);
@@ -98,18 +127,13 @@ void bn254fr_mux2(bn254fr_t out,
                 const bn254fr_t a0, const bn254fr_t a1,
                 const bn254fr_t a2, const bn254fr_t a3)
 {
-    bn254fr_t tmp1, tmp2, one;
+    bn254fr_t tmp1, tmp2;
     bn254fr_alloc(tmp1);
     bn254fr_alloc(tmp2);
 
-    // Assert that cond has a value of ether 0 or 1
-    assert_one(bn254fr_lte(s0, one));
-    assert_one(bn254fr_lte(s1, one));
-    bn254fr_free(one);
-
     bn254fr_mux(tmp1, s0, a0, a1);
     bn254fr_mux(tmp2, s0, a2, a3);
-    bn254fr_mux(out, s1, tmp1, tmp2);
+    bn254fr_mux(out, s1, tmp1, tmp2); 
 
     bn254fr_free(tmp1);
     bn254fr_free(tmp2);

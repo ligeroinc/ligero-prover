@@ -23,10 +23,11 @@
 
 #include <zkp/random.hpp>
 #include <zkp/merkle_tree.hpp>
-// #include <zkp/backend/ligero.hpp>
 #include <zkp/backend/core.hpp>
 #include <host_modules/host_interface.hpp>
+#include <util/mpz_get.hpp>
 #include <util/mpz_vector.hpp>
+#include <ligetron/webgpu/buffer_binding.hpp>
 
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
@@ -91,7 +92,7 @@ struct nonbatch_context_base {
                 return mask_callback(rows...);
             });
         }
-    
+
     virtual ~nonbatch_context_base() = default;
 
     nonbatch_context_base(const nonbatch_context_base&) = delete;
@@ -138,7 +139,7 @@ struct nonbatch_context_base {
         for (auto iter = begin; iter != end; ++iter) {
             destroy_value(std::move(*iter));
         }
-        
+
         stack_.erase((it + n).base(), it.base());
     }
 
@@ -242,7 +243,7 @@ struct nonbatch_context_base {
     void destroy_value(stack_value_type val) {
         if (val.is_frame()) {
             this->frames_.pop_back();   // Adjust current frame pointer
-            
+
             // auto *f = val.frame();
             // for (auto& local : f->locals) {
             //     destroy_value(std::move(local));
@@ -263,7 +264,10 @@ struct nonbatch_context_base {
                     // std::cout << "Warning: coercing witness  bit vector" << std::endl;
                     mpz_class *out = backend_.manager().acquire_mpz();
                     backend_.bit_compose_constant(*out, bits);
-                    native_numeric ret{ static_cast<uint64_t>(out->get_ui()) };
+
+                    // Properly extract all 64-bits regardless of platform.
+                    native_numeric ret { mpz_get_u64(*out) };
+
                     backend_.manager().recycle_mpz(out);
                     return ret;
                 },
@@ -272,7 +276,7 @@ struct nonbatch_context_base {
                 }
                 }, std::move(s.data()));
     }
-    
+
     witness_type make_witness(stack_value_type s) {
         return std::visit(prelude::overloaded {
                 [this](native_numeric&& v) {
@@ -314,7 +318,7 @@ struct nonbatch_context_base {
                     throw wasm_trap("Unexpected stack value");
                 }
             }, std::move(s.data()));
-    } 
+    }
 
     stack_value_type duplicate(stack_value_type& s) {
         return std::visit(prelude::overloaded {
@@ -352,7 +356,7 @@ struct nonbatch_context_base {
         for (auto& m : this->host_module_) {
             m->finalize();
         }
-        
+
         backend_.finalize();
     }
 
@@ -364,7 +368,7 @@ struct nonbatch_context_base {
     auto& executor() { return executor_; }
 
     // auto& encode_randomness() { return dist_; }
-    
+
     mpz_class linear_sums() const {
         return backend_.manager().constsum();
     }
@@ -373,7 +377,7 @@ public:
     size_t linear_count = 0, quad_count = 0;
 
     // Stack operations
-protected:    
+protected:
     store_t *store_ = nullptr;
     module_instance *module_ = nullptr;
     std::vector<frame_type*> frames_;
@@ -406,7 +410,7 @@ struct nonbatch_stage1_context
     using digest_type = typename Hasher::digest;
 
     static constexpr context_role role = context_role::prover;
-    
+
     nonbatch_stage1_context(Executor& exe)
         : Base(exe)
         {
@@ -440,21 +444,7 @@ struct nonbatch_stage1_context
         }
 
     ~nonbatch_stage1_context() {
-        device_x_.destroy_source();
-        device_y_.destroy_source();
-        device_z_.destroy_source();
-
-        sha256_context_.destroy_source();
-        sha256_digest_.destroy_source();
-
-        bind_ntt_x_.destroy();
-        bind_ntt_y_.destroy();
-        bind_ntt_z_.destroy();
-
-        bind_sha256_ctx_.destroy();
-        bind_sha256_x_.destroy();
-        bind_sha256_y_.destroy();
-        bind_sha256_z_.destroy();
+        
     }
 
     void linear_callback(witness_row_type row) override {
@@ -515,7 +505,7 @@ struct nonbatch_stage1_context
 
         batch_randomness_.export_limbs(limbs_.data(), limbs_.size(), sizeof(uint64_t), field_type::num_u64_limbs);
         this->executor().write_buffer(
-            x.slice(this->executor().message_size() * Executor::num_element_bytes),
+                                      x.slice(this->executor().message_size() * Executor::device_bignum_type::num_bytes),
             limbs_.data(),
             params::sample_size * Field::num_u64_limbs);
 
@@ -572,7 +562,7 @@ struct nonbatch_stage1_context
         return this->executor().template copy_to_host<digest_type>(sha256_digest_);
     }
 
-    void finalize() override {        
+    void finalize() override {
         Base::finalize();
 
         std::cout << std::format("Num Batch Equal Gates:              {}", num_equal_gates_)
@@ -586,13 +576,13 @@ protected:
     std::vector<uint64_t> limbs_;
 
     size_t num_equal_gates_ = 0, num_mul_gates_ = 0;
-    
+
     buffer_t device_x_, device_y_, device_z_;
     buffer_t sha256_context_, sha256_digest_;
 
-    webgpu_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
-    webgpu_binding bind_sha256_ctx_;
-    webgpu_binding bind_sha256_x_, bind_sha256_y_, bind_sha256_z_;
+    webgpu::buffer_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
+    webgpu::buffer_binding bind_sha256_ctx_;
+    webgpu::buffer_binding bind_sha256_x_, bind_sha256_y_, bind_sha256_z_;
 };
 
 
@@ -610,7 +600,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
     using buffer_t = typename Executor::buffer_type;
 
     static constexpr context_role role = context_role::prover;
-    
+
     nonbatch_stage2_context(Executor& exe)
         : Base(exe)
         {
@@ -620,10 +610,10 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
             code_   = exe.make_codeword_buffer();
             linear_ = exe.make_codeword_buffer();
             quad_   = exe.make_codeword_buffer();
-            
+
             tmp1_ = exe.make_codeword_buffer();
             tmp2_ = exe.make_codeword_buffer();
-            
+
             device_x_      = exe.make_codeword_buffer();
             device_y_      = exe.make_codeword_buffer();
             device_z_      = exe.make_codeword_buffer();
@@ -663,42 +653,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
         }
 
     ~nonbatch_stage2_context() {
-        code_.destroy_source();
-        linear_.destroy_source();
-        quad_.destroy_source();
-            
-        tmp1_.destroy_source();
-        tmp2_.destroy_source();
-            
-        device_x_.destroy_source();
-        device_y_.destroy_source();
-        device_z_.destroy_source();
-        device_rand_x_.destroy_source();
-        device_rand_y_.destroy_source();
-        device_rand_z_.destroy_source();
 
-        bind_ntt_x_.destroy();
-        bind_ntt_y_.destroy();
-        bind_ntt_z_.destroy();
-        bind_ntt_rand_x_.destroy();
-        bind_ntt_rand_y_.destroy();
-        bind_ntt_rand_z_.destroy();
-
-        bind_code_check_x_.destroy();
-        bind_code_check_y_.destroy();
-        bind_code_check_z_.destroy();
-        bind_linear_check_x_.destroy();
-        bind_linear_check_y_.destroy();
-        bind_linear_check_z_.destroy();
-        bind_quadratic_check_mul_.destroy();
-        bind_quadratic_check_sub_.destroy();
-        bind_quadratic_check_fma_.destroy();
-
-        bind_linear_mask_y_.destroy();
-        bind_quadratic_mask_z_.destroy();
-        
-        bind_batch_equal_sub_.destroy();
-        bind_batch_equal_fma_.destroy();
     }
 
     void linear_callback(witness_row_type row) override {
@@ -803,7 +758,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
         this->executor().EltwiseAddAssignMod(bind_quadratic_mask_z_);
     }
 
-    void check_code(webgpu_binding bind) {
+    void check_code(webgpu::buffer_binding bind) {
         auto *r = this->backend().manager().acquire_mpz();
         for (size_t i = 0; i < params::num_code_test; i++) {
             this->backend().manager().generate_code_random(*r);
@@ -812,7 +767,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
         this->backend().manager().recycle_mpz(r);
     }
 
-    void check_linear(webgpu_binding bind) {
+    void check_linear(webgpu::buffer_binding bind) {
         for (size_t i = 0; i < params::num_linear_test; i++) {
             this->executor().EltwiseFMAMod(bind);
         }
@@ -821,7 +776,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
     void check_quadratic() {
         auto *r = this->backend().manager().acquire_mpz();
         this->executor().EltwiseMultMod(bind_quadratic_check_mul_);
-        this->executor().EltwiseSubMod(bind_quadratic_check_sub_);  
+        this->executor().EltwiseSubMod(bind_quadratic_check_sub_);
         for (size_t i = 0; i < params::num_quadratic_test; i++) {
             this->backend().manager().generate_quadratic_random(*r);
             this->executor().EltwiseFMAMod(bind_quadratic_check_fma_, *r);
@@ -837,7 +792,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
                                        sizeof(uint64_t),
                                        field_type::num_u64_limbs);
         this->executor().write_buffer(
-            x.slice(this->executor().message_size() * Executor::num_element_bytes),
+                                      x.slice(this->executor().message_size() * Executor::device_bignum_type::num_bytes),
             limbs_.data(),
             params::sample_size * Field::num_u64_limbs);
 
@@ -845,23 +800,23 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
         this->executor().encode_ntt_device(bind_ntt_x_);
         check_code(bind_code_check_x_);
     }
-    
+
     void on_batch_bit(buffer_t& x) {
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().encode_ntt_device(bind_ntt_x_);
-        
+
         check_code(bind_code_check_x_);
 
         this->executor().copy_buffer_to_buffer(device_x_, device_y_);
         this->executor().copy_buffer_to_buffer(device_x_, device_z_);
-        
+
         check_quadratic();
     }
 
     void on_batch_equal(buffer_t& x, buffer_t& y) {
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().copy_buffer_clear(y, device_y_);
-        
+
         this->executor().encode_ntt_device(bind_ntt_x_);
         this->executor().encode_ntt_device(bind_ntt_y_);
 
@@ -877,7 +832,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
     void on_batch_quadratic(buffer_t& x, buffer_t& y, buffer_t& z) {
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().encode_ntt_device(bind_ntt_x_);
-        
+
         this->executor().copy_buffer_clear(z, device_z_);
         this->executor().encode_ntt_device(bind_ntt_z_);
 
@@ -888,7 +843,7 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
             this->executor().copy_buffer_clear(y, device_y_);
             this->executor().encode_ntt_device(bind_ntt_y_);
         }
-        
+
         check_code(bind_code_check_x_);
         check_code(bind_code_check_y_);
         check_code(bind_code_check_z_);
@@ -899,26 +854,26 @@ struct nonbatch_stage2_context : public nonbatch_context_base<Field, Executor, R
     buffer_t code()      { return code_;   }
     buffer_t linear()    { return linear_; }
     buffer_t quadratic() { return quad_;   }
-    
+
 protected:
     mpz_vector batch_randomness_;
 
     std::vector<uint64_t> limbs_;
-    
+
     buffer_t tmp1_, tmp2_;
     buffer_t code_, linear_, quad_;
     buffer_t device_x_, device_y_, device_z_;
     buffer_t device_rand_x_, device_rand_y_, device_rand_z_;
 
-    webgpu_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
-    webgpu_binding bind_ntt_rand_x_, bind_ntt_rand_y_, bind_ntt_rand_z_;
+    webgpu::buffer_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
+    webgpu::buffer_binding bind_ntt_rand_x_, bind_ntt_rand_y_, bind_ntt_rand_z_;
     
-    webgpu_binding bind_code_check_x_, bind_code_check_y_, bind_code_check_z_;
-    webgpu_binding bind_linear_check_x_, bind_linear_check_y_, bind_linear_check_z_;
-    webgpu_binding bind_quadratic_check_mul_, bind_quadratic_check_sub_, bind_quadratic_check_fma_;
-    webgpu_binding bind_linear_mask_y_, bind_quadratic_mask_z_;
+    webgpu::buffer_binding bind_code_check_x_, bind_code_check_y_, bind_code_check_z_;
+    webgpu::buffer_binding bind_linear_check_x_, bind_linear_check_y_, bind_linear_check_z_;
+    webgpu::buffer_binding bind_quadratic_check_mul_, bind_quadratic_check_sub_, bind_quadratic_check_fma_;
+    webgpu::buffer_binding bind_linear_mask_y_, bind_quadratic_mask_z_;
 
-    webgpu_binding bind_batch_equal_sub_, bind_batch_equal_fma_;
+    webgpu::buffer_binding bind_batch_equal_sub_, bind_batch_equal_fma_;
 };
 
 
@@ -956,50 +911,40 @@ struct nonbatch_stage3_context
             device_y_ = exe.make_codeword_buffer();
             device_z_ = exe.make_codeword_buffer();
 
-            device_samplings_ = exe.make_device_buffer(si.size() *
-                                                       Executor::num_element_bytes *
-                                                       num_sampling_threshold_);
+            device_samplings_ = exe.make_device_buffer(
+                si.size() *
+                Executor::device_bignum_type::num_bytes *
+                num_sampling_threshold_);
             
             bind_ntt_x_ = exe.bind_ntt(device_x_);
             bind_ntt_y_ = exe.bind_ntt(device_y_);
             bind_ntt_z_ = exe.bind_ntt(device_z_);
-            
+
             bind_sample_x_ = exe.bind_sampling(device_x_, device_samplings_);
             bind_sample_y_ = exe.bind_sampling(device_y_, device_samplings_);
             bind_sample_z_ = exe.bind_sampling(device_z_, device_samplings_);
         }
 
     ~nonbatch_stage3_context() {
-        device_x_.destroy_source();
-        device_y_.destroy_source();
-        device_z_.destroy_source();
-        device_samplings_.destroy_source();
 
-        bind_ntt_x_.destroy();
-        bind_ntt_y_.destroy();
-        bind_ntt_z_.destroy();
-
-        bind_sample_x_.destroy();
-        bind_sample_y_.destroy();
-        bind_sample_z_.destroy();
     }
 
     void sync_sample_to_host() {
-        const size_t sampling_offset = sampling_count_ * sample_index_.size() * Executor::num_element_bytes;
+        const size_t sampling_offset = sampling_count_ * sample_index_.size() * Executor::device_bignum_type::num_bytes;
         auto device_buf = device_samplings_.slice(0, sampling_offset);
         auto host_buf = this->executor().template copy_to_host<u32>(device_buf);
-        
+
         host_samplings_.insert(host_samplings_.end(), host_buf.cbegin(), host_buf.cend());
 
         sampling_count_ = 0;
         this->executor().clear_buffer(device_buf);
     }
 
-    void sample_row(webgpu_binding bind) {
+    void sample_row(webgpu::buffer_binding bind) {
         if (sampling_count_ >= num_sampling_threshold_) {        
             sync_sample_to_host();
         }
-        
+
         this->executor().sample_gather(bind, sampling_count_);
         ++sampling_count_;
     }
@@ -1064,7 +1009,7 @@ struct nonbatch_stage3_context
                                        sizeof(uint64_t),
                                        field_type::num_u64_limbs);
         this->executor().write_buffer(
-            x.slice(this->executor().message_size() * Executor::num_element_bytes),
+                                      x.slice(this->executor().message_size() * Executor::device_bignum_type::num_bytes),
             limbs_.data(),
             params::sample_size * Field::num_u64_limbs);
 
@@ -1082,7 +1027,7 @@ struct nonbatch_stage3_context
     void on_batch_equal(buffer_t& x, buffer_t& y) {
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().copy_buffer_clear(y, device_y_);
-        
+
         this->executor().encode_ntt_device(bind_ntt_x_);
         this->executor().encode_ntt_device(bind_ntt_y_);
         sample_row(bind_sample_x_);
@@ -1092,9 +1037,9 @@ struct nonbatch_stage3_context
     void on_batch_quadratic(buffer_t& x, buffer_t& y, buffer_t& z) {
         this->executor().copy_buffer_clear(x, device_x_);
         this->executor().encode_ntt_device(bind_ntt_x_);
-        
+
         this->executor().copy_buffer_clear(z, device_z_);
-        this->executor().encode_ntt_device(bind_ntt_z_);        
+        this->executor().encode_ntt_device(bind_ntt_z_);
 
         if (x == y) {
             this->executor().copy_buffer_to_buffer(device_x_, device_y_);
@@ -1103,19 +1048,19 @@ struct nonbatch_stage3_context
             this->executor().copy_buffer_clear(y, device_y_);
             this->executor().encode_ntt_device(bind_ntt_y_);
         }
-        
+
         sample_row(bind_sample_x_);
         sample_row(bind_sample_y_);
         sample_row(bind_sample_z_);
     }
 
-    void finalize() override {        
+    void finalize() override {
         Base::finalize();
 
         sync_sample_to_host();
         oa_ << host_samplings_;
     }
-    
+
 protected:
     std::vector<size_t> sample_index_;
     std::vector<uint64_t> limbs_;
@@ -1125,8 +1070,8 @@ protected:
     buffer_t device_samplings_;
 
     mpz_vector batch_randomness_;
-    webgpu_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
-    webgpu_binding bind_sample_x_, bind_sample_y_, bind_sample_z_;
+    webgpu::buffer_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
+    webgpu::buffer_binding bind_sample_x_, bind_sample_y_, bind_sample_z_;
 
     const size_t num_sampling_threshold_ = 256;
     size_t sampling_count_ = 0;
@@ -1239,62 +1184,11 @@ struct nonbatch_verifier_context
         }
 
     ~nonbatch_verifier_context() {
-        code_.destroy_source();
-        linear_.destroy_source();
-        quad_.destroy_source();
 
-        tmp1_.destroy_source();
-        tmp2_.destroy_source();
-
-        sample_rand_x_.destroy_source();
-        sample_rand_y_.destroy_source();
-        sample_rand_z_.destroy_source();
-
-        device_x_.destroy_source();
-        device_y_.destroy_source();
-        device_z_.destroy_source();
-
-        device_rand_x_.destroy_source();
-        device_rand_y_.destroy_source();
-        device_rand_z_.destroy_source();
-
-        sha256_context_.destroy_source();
-        sha256_digest_.destroy_source();
-
-        bind_ntt_x_.destroy();
-        bind_ntt_y_.destroy();
-        bind_ntt_z_.destroy();
-        bind_ntt_rand_x_.destroy();
-        bind_ntt_rand_y_.destroy();
-        bind_ntt_rand_z_.destroy();
-        bind_sample_rand_x_.destroy();
-        bind_sample_rand_y_.destroy();
-        bind_sample_rand_z_.destroy();
-
-        bind_sha256_ctx_.destroy();
-        bind_sha256_x_.destroy();
-        bind_sha256_y_.destroy();
-        bind_sha256_z_.destroy();
-
-        bind_code_check_x_.destroy();
-        bind_code_check_y_.destroy();
-        bind_code_check_z_.destroy();
-        bind_linear_check_x_.destroy();
-        bind_linear_check_y_.destroy();
-        bind_linear_check_z_.destroy();
-        bind_quadratic_check_mul_.destroy();
-        bind_quadratic_check_sub_.destroy();
-        bind_quadratic_check_fma_.destroy();
-
-        bind_linear_mask_y_.destroy();
-        bind_quadratic_mask_z_.destroy();
-
-        bind_batch_equal_sub_.destroy();
-        bind_batch_equal_fma_.destroy();
     }
 
     void pop_sample(buffer_t buf) {
-        const size_t num_u32_size = sample_index_.size() * Executor::num_limbs;
+        const size_t num_u32_size = sample_index_.size() * Executor::device_bignum_type::num_limbs;
         this->executor().write_buffer(buf,
                                       host_samplings_.data() + pop_offset_,
                                       num_u32_size);
@@ -1302,11 +1196,11 @@ struct nonbatch_verifier_context
         pop_offset_ += num_u32_size;
     }
 
-    void sample_row(webgpu_binding bind) {
+    void sample_row(webgpu::buffer_binding bind) {
         this->executor().sample_gather(bind, 0);
     }
 
-    void check_code(webgpu_binding bind) {
+    void check_code(webgpu::buffer_binding bind) {
         auto *r = this->backend().manager().acquire_mpz();
         for (size_t i = 0; i < params::num_code_test; i++) {
             this->backend().manager().generate_code_random(*r);
@@ -1315,7 +1209,7 @@ struct nonbatch_verifier_context
         this->backend().manager().recycle_mpz(r);
     }
 
-    void check_linear(webgpu_binding bind) {
+    void check_linear(webgpu::buffer_binding bind) {
         for (size_t i = 0; i < params::num_linear_test; i++) {
             this->executor().EltwiseFMAMod(bind);
         }
@@ -1491,19 +1385,19 @@ protected:
     buffer_t device_rand_x_, device_rand_y_, device_rand_z_;
     buffer_t sha256_context_, sha256_digest_;
 
-    webgpu_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
-    webgpu_binding bind_ntt_rand_x_, bind_ntt_rand_y_, bind_ntt_rand_z_;
-    webgpu_binding bind_sample_rand_x_, bind_sample_rand_y_, bind_sample_rand_z_;
+    webgpu::buffer_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
+    webgpu::buffer_binding bind_ntt_rand_x_, bind_ntt_rand_y_, bind_ntt_rand_z_;
+    webgpu::buffer_binding bind_sample_rand_x_, bind_sample_rand_y_, bind_sample_rand_z_;
 
-    webgpu_binding bind_sha256_ctx_;
-    webgpu_binding bind_sha256_x_, bind_sha256_y_, bind_sha256_z_;
+    webgpu::buffer_binding bind_sha256_ctx_;
+    webgpu::buffer_binding bind_sha256_x_, bind_sha256_y_, bind_sha256_z_;
 
-    webgpu_binding bind_code_check_x_, bind_code_check_y_, bind_code_check_z_;
-    webgpu_binding bind_linear_check_x_, bind_linear_check_y_, bind_linear_check_z_;
-    webgpu_binding bind_quadratic_check_mul_, bind_quadratic_check_sub_, bind_quadratic_check_fma_;
-    webgpu_binding bind_linear_mask_y_, bind_quadratic_mask_z_;
+    webgpu::buffer_binding bind_code_check_x_, bind_code_check_y_, bind_code_check_z_;
+    webgpu::buffer_binding bind_linear_check_x_, bind_linear_check_y_, bind_linear_check_z_;
+    webgpu::buffer_binding bind_quadratic_check_mul_, bind_quadratic_check_sub_, bind_quadratic_check_fma_;
+    webgpu::buffer_binding bind_linear_mask_y_, bind_quadratic_mask_z_;
 
-    webgpu_binding bind_batch_equal_sub_, bind_batch_equal_fma_;
+    webgpu::buffer_binding bind_batch_equal_sub_, bind_batch_equal_fma_;
 };
 
 

@@ -19,6 +19,7 @@
 #include <concepts>
 #include <memory>
 
+#include <util/mpz_get.hpp>
 #include <util/mpz_assign.hpp>
 #include <zkp/backend/witness_manager.hpp>
 
@@ -73,8 +74,8 @@ struct managed_witness : zkexpr_base {
     void val(const T& v) { mpz_assign(*data_->value_ptr(), v); }
     const mpz_class& val() const { return *data_->value_ptr(); }
 
-    uint32_t as_u32() const { return static_cast<uint32_t>(data_->value_ptr()->get_ui()); }
-    uint64_t as_u64() const { return static_cast<uint64_t>(data_->value_ptr()->get_ui()); }
+    uint32_t as_u32() const { return mpz_get_u32(val()); }
+    uint64_t as_u64() const { return mpz_get_u64(val()); }
 
     template <typename Ctx>
     managed_witness eval(Ctx& ctx) const {
@@ -117,7 +118,7 @@ struct decomposed_bits {
     void push_lsb(managed_witness w, size_t n) {
         bits_.insert(bits_.begin(), n, w);
     }
-    
+
     void drop_lsb(size_t n) {
         assert(n <= size());
 

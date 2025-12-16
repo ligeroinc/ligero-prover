@@ -81,6 +81,12 @@ struct env_module : public host_module {
         // ctx_->backend().assert_const(var, mpz_promote(var.val()));
     }
 
+    void witness_cast() {
+        auto sx = ctx_->stack_pop();
+        auto wx = ctx_->make_witness(std::move(sx));
+        ctx_->stack_push(wx);
+    }
+
     void print_str() {
         u32 len = ctx_->stack_pop().as_u32();
         u32 ptr = ctx_->stack_pop().as_u32();
@@ -170,6 +176,8 @@ struct env_module : public host_module {
             { "assert_one",        &Self::assert_one         },
             { "assert_equal",      &Self::assert_equal       },
             { "assert_constant",   &Self::assert_constant    },
+            { "witness_cast_u32",  &Self::witness_cast       },
+            { "witness_cast_u64",  &Self::witness_cast       },
             { "i32_private_const", &Self::i32_private_const  },
             { "i64_private_const", &Self::i64_private_const  },
             // { "print",             &Self::print              },

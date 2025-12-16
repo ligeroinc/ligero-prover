@@ -18,6 +18,7 @@
 #define __LIGETRON_API__
 
 #include <ligetron/apidef.h>
+#include <stdint.h>
 
 /* WASI preview1 */
 LIGETRON_API(wasi_snapshot_preview1, args_sizes_get)
@@ -29,6 +30,10 @@ int args_get(char **argv, char *buf);
 LIGETRON_API(env, assert_one)      void assert_one(int);
 LIGETRON_API(env, assert_zero)     void assert_zero(int);
 LIGETRON_API(env, assert_constant) void assert_constant(int);
+
+/* Witness promotion */
+LIGETRON_API(env, witness_cast_u32) uint32_t witness_cast_u32(uint32_t x);
+LIGETRON_API(env, witness_cast_u64) uint32_t witness_cast_u64(uint64_t x);
 
 /* Debug */
 LIGETRON_API(env, print_str)       void print_str(const void*, int);

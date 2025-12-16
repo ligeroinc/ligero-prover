@@ -1,0 +1,15 @@
+CompileFlags:
+  # Use compile_commands.json from SDK build directory
+  CompilationDatabase: sdk/cpp/build
+
+  Add:
+    # Include paths (needed for header files not in compile_commands.json)
+    # Replace <PROJECT_ROOT> with the absolute path to your ligetron directory
+    - -I<PROJECT_ROOT>/sdk/cpp/include
+    - -I<PROJECT_ROOT>/include
+    # Suppress WebAssembly-specific attribute warnings
+    - -Wno-unknown-attributes
+
+# Diagnostics configuration
+Diagnostics:
+  MissingIncludes: Strict

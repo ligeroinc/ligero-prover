@@ -33,6 +33,8 @@ struct vbn254fr_module : public host_module {
     using executor_t    = typename Context::executor_t;
     using buffer_t      = typename executor_t::buffer_type;
     using device_bignum = typename executor_t::device_bignum_type;
+    static constexpr auto device_bignum_bytes = device_bignum::num_bytes;
+    static constexpr auto device_bignum_num_limbs = device_bignum::num_limbs;
 
     using Self  = vbn254fr_module<Context>;
     typedef void (Self::*host_function_type)();
@@ -53,7 +55,7 @@ struct vbn254fr_module : public host_module {
         /// Number of elements in a batch row, equals to l = k - sampling size
         num_buf_elements_ = executor_.message_size();
         /// Number of bytes in a PADDED buffer, equals to k * sizeof(bignum_t)
-        num_buf_bytes_    = executor_.padding_size() * executor_t::num_element_bytes;
+        num_buf_bytes_    = executor_.padding_size() * device_bignum_bytes;
         tmp_buf_          = executor_.make_device_buffer(num_buf_bytes_);
 
         buffer_base_ = executor_.make_device_buffer(max_variables * num_buf_bytes_);
@@ -71,7 +73,7 @@ struct vbn254fr_module : public host_module {
     }
 
     buffer_t get_buffer_from_offset(size_t element_offset) {
-        return buffer_base_.slice_n(element_offset * executor_t::num_element_bytes,
+        return buffer_base_.slice_n(element_offset * device_bignum_bytes,
                                     num_buf_bytes_);
     }
 
@@ -375,7 +377,7 @@ struct vbn254fr_module : public host_module {
         auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
-        mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(uint32_t), 0, 0, k);
+        mpz_import(mpz.get_mpz_t(), device_bignum_num_limbs, -1, sizeof(uint32_t), 0, 0, k);
 
         buffer_t out = get_buffer_from_offset(out_offset);
         executor_.EltwiseAddMod(bind_compute2_, mpz, { .x = x_offset });
@@ -408,7 +410,7 @@ struct vbn254fr_module : public host_module {
         auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
-        mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
+        mpz_import(mpz.get_mpz_t(), device_bignum_num_limbs, -1, sizeof(u32), 0, 0, k);
 
         buffer_t out = get_buffer_from_offset(out_offset);
         // buffer_t& x   = mem_map_.at(x_handle);
@@ -428,7 +430,7 @@ struct vbn254fr_module : public host_module {
         auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
-        mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
+        mpz_import(mpz.get_mpz_t(), device_bignum_num_limbs, -1, sizeof(u32), 0, 0, k);
 
         buffer_t out = get_buffer_from_offset(out_offset);
         // buffer_t& x   = mem_map_.at(x_handle);
@@ -474,7 +476,7 @@ struct vbn254fr_module : public host_module {
         auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
-        mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
+        mpz_import(mpz.get_mpz_t(), device_bignum_num_limbs, -1, sizeof(u32), 0, 0, k);
 
         buffer_t out = get_buffer_from_offset(out_offset);
         buffer_t x   = get_buffer_from_offset(x_offset);
@@ -494,7 +496,7 @@ struct vbn254fr_module : public host_module {
         auto *mem = ctx_->memory_data().data();
         const u32 *k = reinterpret_cast<const u32*>(mem + k_addr);
         mpz_class mpz;
-        mpz_import(mpz.get_mpz_t(), executor_t::num_limbs, -1, sizeof(u32), 0, 0, k);
+        mpz_import(mpz.get_mpz_t(), device_bignum_num_limbs, -1, sizeof(u32), 0, 0, k);
 
         buffer_t out = get_buffer_from_offset(out_offset);
         buffer_t x   = get_buffer_from_offset(x_offset);
@@ -600,12 +602,6 @@ struct vbn254fr_module : public host_module {
 
     void finalize() override {
         executor_.device_synchronize();
-
-        buffer_base_.destroy_source();
-        tmp_buf_.destroy_source();
-
-        bind_compute2_.destroy();
-        bind_compute3_.destroy();
     }
 
 protected:
@@ -621,7 +617,7 @@ protected:
 
     buffer_t buffer_base_, tmp_buf_;
 
-    webgpu_binding bind_compute2_, bind_compute3_;
+    webgpu::buffer_binding bind_compute2_, bind_compute3_;
 
     std::unordered_map<std::string_view, host_function_type> call_map_;
 };
