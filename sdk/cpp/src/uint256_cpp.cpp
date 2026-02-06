@@ -110,7 +110,7 @@ void swap(uint256 &first, uint256 &second) {
 }
 
 /// Adds equality constraints for two uint256 values
-void assert_equal(const uint256 &x, const uint256 &y) {
+void uint256::assert_equal(const uint256 &x, const uint256 &y) {
     uint256_assert_equal(x.data(), y.data());
 }
 

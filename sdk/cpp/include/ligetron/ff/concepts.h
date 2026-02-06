@@ -77,6 +77,20 @@ concept HasExportU32 = requires(const typename P::storage_type& x,
     { P::export_u32(x, limbs) } -> std::convertible_to<size_t>;
 };
 
+template <typename P>
+concept HasImportBytes = requires(typename P::storage_type& x,
+                                  std::span<const unsigned char> bytes,
+                                  int byte_order) {
+    { P::import_bytes(x, bytes, byte_order) } -> std::convertible_to<size_t>;
+};
+
+template <typename P>
+concept HasExportBytes = requires(const typename P::storage_type& x,
+                                  std::span<unsigned char> bytes,
+                                  int byte_order) {
+    { P::export_bytes(x, bytes, byte_order) } -> std::convertible_to<size_t>;
+};
+
 template <typename F>
 concept HasBarrettFactor = requires {
     { F::barrett_factor() } -> std::convertible_to<const typename F::storage_type&>;
@@ -144,6 +158,13 @@ concept HasToBits = HasBoolean<F> &&
     { F::num_rounded_bits } -> std::convertible_to<size_t>;
     F::to_bits(bits, a);
 };
+
+template <typename F>
+concept HasAssertEqual = requires(const typename F::storage_type& x,
+                                  const typename F::storage_type& y) {
+    F::assert_equal(x, y);
+};
+
 
 }  // namespace ligetron
 

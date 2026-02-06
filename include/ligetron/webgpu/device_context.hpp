@@ -23,10 +23,6 @@
 #include <webgpu/webgpu.h>
 #include <ligetron/webgpu/buffer_view.hpp>
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#endif
-
 namespace ligero {
 namespace webgpu {
 

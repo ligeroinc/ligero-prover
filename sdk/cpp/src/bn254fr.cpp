@@ -106,6 +106,132 @@ void bn254fr_set_bytes_checked(bn254fr_t out,
     bn254fr_assert_equal_bytes(out, bytes, len, order);
 }
 
+void bn254fr_eqz_checked(bn254fr_t out, const bn254fr_t x) {
+    bn254fr_t inv;
+    bn254fr_t zero;
+    bn254fr_t one;
+    bn254fr_alloc(inv);
+    bn254fr_alloc(zero);
+    bn254fr_alloc(one);
+
+    bn254fr_set_u32(one, 1);
+
+    if (!bn254fr_eqz(x)) {
+        // inv = 1 / x
+        bn254fr_invmod(inv, x);
+    } else {
+        // inv = 0
+    }
+
+    // out = -x * inv + 1
+    {
+        bn254fr_t mul_res;
+        bn254fr_t neg_res;
+
+        bn254fr_alloc(mul_res);
+        bn254fr_alloc(neg_res);
+
+        bn254fr_negmod_checked(neg_res, x);
+        bn254fr_mulmod_checked(mul_res, neg_res, inv);
+        bn254fr_addmod_checked(out, mul_res, one);
+
+        bn254fr_free(mul_res);
+        bn254fr_free(neg_res);
+    }
+    
+    bn254fr_free(inv);
+
+    // checking in * out === 0
+    {
+        bn254fr_t mul_res;
+        bn254fr_alloc(mul_res);
+        bn254fr_mulmod_checked(mul_res, x, out);
+        bn254fr_assert_equal(mul_res, zero);
+        bn254fr_free(mul_res);
+    }
+
+    bn254fr_free(zero);
+    bn254fr_free(one);
+}
+
+void bn254fr_eq_checked(bn254fr_t out, const bn254fr_t a, const bn254fr_t b) {
+    bn254fr_t sub_res;
+    bn254fr_alloc(sub_res);
+
+    bn254fr_submod_checked(sub_res, a, b);
+    bn254fr_eqz_checked(out, sub_res);
+
+    bn254fr_free(sub_res);
+}
+
+void bn254fr_lt_checked(bn254fr_t out,
+                        const bn254fr_t a,
+                        const bn254fr_t b,
+                        uint32_t u32_n_bits) {
+
+    // calculating x = 2^Bits + a - b;
+    bn254fr_t x;
+    bn254fr_alloc(x);
+    {
+        bn254fr_t n_bits, bits_pow, add_res;
+        bn254fr_alloc(n_bits);
+        bn254fr_alloc(bits_pow);
+        bn254fr_alloc(add_res);
+
+        bn254fr_set_u32(bits_pow, static_cast<uint32_t>(1U));
+        bn254fr_set_u32(n_bits, u32_n_bits);
+        bn254fr_shlmod(bits_pow, bits_pow, n_bits);
+        bn254fr_addmod_checked(add_res, bits_pow, a);
+        bn254fr_submod_checked(x, add_res, b);
+
+        bn254fr_free(n_bits);
+        bn254fr_free(bits_pow);
+        bn254fr_free(add_res);
+    }
+
+    // decomposing x into Bits+1 bits
+
+    bn254fr_t bits[256];
+    for (size_t i = 0; i < u32_n_bits + 1; i++) {
+        bn254fr_alloc(bits[i]);
+    }
+
+    bn254fr_to_bits_checked(bits, x, u32_n_bits + 1);
+    bn254fr_free(x);
+
+    // the result of comparison 1 - msb(x)
+    {
+        bn254fr_t one;
+        bn254fr_alloc(one);
+        bn254fr_set_u32(one, static_cast<uint32_t>(1));
+        bn254fr_submod_checked(out, one, bits[u32_n_bits]);
+        bn254fr_free(one);
+    }
+
+    for (size_t i = 0; i < u32_n_bits + 1; i++) {
+        bn254fr_free(bits[i]);
+    }
+}
+
+void bn254fr_land_checked(bn254fr_t out, const bn254fr_t a, const bn254fr_t b) {
+    bn254fr_mulmod_checked(out, a, b);
+}
+
+void bn254fr_lor_checked(bn254fr_t out, const bn254fr_t a, const bn254fr_t b) {
+    // out = a + b - a * b
+
+    bn254fr_t mul_res, add_res;
+    bn254fr_alloc(mul_res);
+    bn254fr_alloc(add_res);
+
+    bn254fr_mulmod_checked(mul_res, a, b);
+    bn254fr_addmod_checked(add_res, a, b);
+    bn254fr_submod_checked(out, add_res, mul_res);
+
+    bn254fr_free(mul_res);
+    bn254fr_free(add_res);
+}
+
 void bn254fr_mux(bn254fr_t out, const bn254fr_t cond, const bn254fr_t a0, const bn254fr_t a1) {
     // out = cond ? a1 : a0
 
@@ -309,6 +435,26 @@ void bn254fr_class::to_bits(bn254fr_class* outs, uint32_t count) {
 
     for (uint32_t i = 0; i < count; ++i) {
         outs[i].constrained_ = true;
+    }
+    constrained_ = true;
+}
+
+void bn254fr_class::from_bits(bn254fr_class* in, uint32_t count) {
+    if (count < 1 || count > 254) {
+        assert_one(0);
+        return;
+    }
+
+    bn254fr_t in_buff[count];
+    for (uint32_t i = 0; i < count; ++i) {
+        // use handles from the allocated data
+       in_buff[i][0] = in[i].data_[0];
+    }
+
+    bn254fr_from_bits_checked(data_, in_buff, count);
+
+    for (uint32_t i = 0; i < count; ++i) {
+        in[i].constrained_ = true;
     }
     constrained_ = true;
 }

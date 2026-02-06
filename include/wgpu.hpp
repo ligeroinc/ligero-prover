@@ -42,10 +42,6 @@
 
 #include <webgpu/webgpu.h>
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#endif
-
 using namespace std::chrono_literals;
 namespace fs = std::filesystem;
 

@@ -78,18 +78,19 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Web")
   file(COPY "${CMAKE_SOURCE_DIR}/shader" DESTINATION "${CMAKE_BINARY_DIR}/pack")
 
   add_compile_definitions(NDEBUG)
-  add_compile_options(-O3 -Wno-narrowing -mbulk-memory -sUSE_ZLIB=1)
+  add_compile_options(-O3 -mbulk-memory -sUSE_ZLIB=1 --use-port=emdawnwebgpu)
   add_link_options(
-    -sUSE_WEBGPU=1
+    --use-port=emdawnwebgpu
     -sUSE_ZLIB=1
     -sERROR_ON_UNDEFINED_SYMBOLS=0
     -sTOTAL_STACK=2MB
-    -sINITIAL_MEMORY=256MB)
+    -sINITIAL_MEMORY=256MB
+    -sALLOW_MEMORY_GROWTH)
   add_link_options(-sINVOKE_RUN=0 -sEXPORTED_RUNTIME_METHODS=['FS','callMain'])
   add_link_options(--preload-file "${CMAKE_BINARY_DIR}/pack@/")
 
   if (ZKPLATFORM)
-    add_link_options(-sENVIRONMENT=worker -sALLOW_MEMORY_GROWTH)
+    add_link_options(-sENVIRONMENT=worker)
   else()
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     add_link_options(--emrun)
@@ -98,10 +99,7 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Web")
 
   add_link_options(
     -sASYNCIFY=1
-    -sASYNCIFY_IMPORTS=emscripten_sleep
-    -sASYNCIFY_ONLY=[]
     -sASYNCIFY_STACK_SIZE=4194304
-    -sASYNCIFY_ADD=['wgpuRequestAdapterSync','wgpuRequestDeviceSync','wgpuBufferMapSync','wgpuDeviceSynchronize']
   )
 
 else()
@@ -116,7 +114,8 @@ else()
 endif()
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
-include_directories(${CMAKE_PREFIX_PATH}/include)
+# External library headers as SYSTEM to suppress warnings from them
+include_directories(SYSTEM ${CMAKE_PREFIX_PATH}/include)
 link_directories(${CMAKE_PREFIX_PATH}/lib)
 
 add_library(logging      include/util/log.cpp)

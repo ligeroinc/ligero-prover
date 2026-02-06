@@ -25,13 +25,6 @@
 
 #define WGPU_DESKTOP_MAX_BUFFER_SIZE 2147483648
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#define WGPU_STRING(s) s
-#else
-#define WGPU_STRING(s) WGPUStringView{ s, std::strlen(s) }
-#endif
-
 namespace ligero {
 namespace webgpu {
 

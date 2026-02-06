@@ -36,23 +36,17 @@ WGPUShaderModule load_shader(WGPUDevice device, const fs::path& path) {
     ss << ifs.rdbuf();
     std::string source = ss.str();
 
-    WGPUShaderModuleWGSLDescriptor wgslDesc {
+    WGPUShaderSourceWGSL wgslDesc {
         .chain = WGPUChainedStruct {
             .next = nullptr,
-#if defined(__EMSCRIPTEN__)
-            .sType = WGPUSType_ShaderModuleWGSLDescriptor,
-#else
-            // use Dawn's type
             .sType = WGPUSType_ShaderSourceWGSL,
-#endif
-
         },
-        .code = WGPU_STRING(source.c_str())
+        .code = {source.c_str(), source.length()}
     };
 
     WGPUShaderModuleDescriptor desc {
         .nextInChain = (WGPUChainedStruct*)&wgslDesc,
-        .label = WGPU_STRING(path.c_str()),
+        .label = {path.c_str(), strlen(path.c_str())},
     };
 
     return wgpuDeviceCreateShaderModule(device, &desc);

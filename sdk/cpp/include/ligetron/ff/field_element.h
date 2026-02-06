@@ -27,6 +27,7 @@ namespace ligetron::ff {
 template <FiniteFieldPolicy Policy>
 struct field_element {
     using storage_type = typename Policy::storage_type;
+    static constexpr size_t num_rounded_bits = Policy::num_rounded_bits;
 
     field_element() requires std::default_initializable<storage_type> = default;
 
@@ -79,6 +80,42 @@ struct field_element {
     requires HasExportU32<Policy>
     {
         return Policy::export_u32(data_, limbs);
+    }
+
+    void import_bytes(std::span<const unsigned char> bytes, int byte_order)
+    requires HasImportBytes<Policy>
+    {
+        Policy::import_bytes(data_, bytes, byte_order);
+    }
+
+    void import_bytes_little(std::span<const unsigned char> bytes)
+    requires HasImportBytes<Policy>
+    {
+        Policy::import_bytes(data_, bytes, -1);
+    }
+
+    void import_bytes_big(std::span<const unsigned char> bytes)
+    requires HasImportBytes<Policy>
+    {
+        Policy::import_bytes(data_, bytes, 1);
+    }
+
+    size_t export_bytes(std::span<unsigned char> bytes, int byte_order) const
+    requires HasExportBytes<Policy>
+    {
+        return Policy::export_bytes(data_, bytes, byte_order);
+    }
+
+    size_t export_bytes_little(std::span<unsigned char> bytes) const
+    requires HasExportBytes<Policy>
+    {
+        return Policy::export_bytes(data_, bytes, -1);
+    }
+
+    size_t export_bytes_big(std::span<unsigned char> bytes) const
+    requires HasExportBytes<Policy>
+    {
+        return Policy::export_bytes(data_, bytes, 1);
     }
 
     void set_zero() { Policy::set_zero(data_); }
@@ -209,6 +246,11 @@ struct field_element {
     requires HasPrint<Policy>
     {
         Policy::print(data_);
+    }
+
+    static void assert_equal(const field_element& x, const field_element& y)
+    requires (HasAssertEqual<Policy>) {
+        Policy::assert_equal(x.data(), y.data());
     }
 
 private:

@@ -430,7 +430,7 @@ webgpu::buffer_binding webgpu_context::bind_sampling(buffer_type from, buffer_ty
 }
 
 void webgpu_context::EltwiseAddMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseAddMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseAddMod", WGPU_STRLEN} };
     
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
@@ -456,7 +456,7 @@ void webgpu_context::EltwiseAddMod(webgpu::buffer_binding bind, webgpu::eltwise_
 void webgpu_context::EltwiseAddMod(webgpu::buffer_binding bind, const mpz_class& k, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, k, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseAddConstMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseAddConstMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -479,7 +479,7 @@ void webgpu_context::EltwiseAddMod(webgpu::buffer_binding bind, const mpz_class&
 }
 
 void webgpu_context::EltwiseSubMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseSubMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseSubMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -504,7 +504,7 @@ void webgpu_context::EltwiseSubMod(webgpu::buffer_binding bind, webgpu::eltwise_
 void webgpu_context::EltwiseSubConstMod(webgpu::buffer_binding bind, const mpz_class& k, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, k, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseSubConstMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseSubConstMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -529,7 +529,7 @@ void webgpu_context::EltwiseSubConstMod(webgpu::buffer_binding bind, const mpz_c
 void webgpu_context::EltwiseConstSubMod(webgpu::buffer_binding bind, const mpz_class& k, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, k, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseConstSubMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseConstSubMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -552,7 +552,7 @@ void webgpu_context::EltwiseConstSubMod(webgpu::buffer_binding bind, const mpz_c
 }
 
 void webgpu_context::EltwiseMultMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseMultMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseMultMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -577,7 +577,7 @@ void webgpu_context::EltwiseMultMod(webgpu::buffer_binding bind, webgpu::eltwise
 void webgpu_context::EltwiseMultMod(webgpu::buffer_binding bind, const mpz_class& k, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, k, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseMultConstantMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseMultConstantMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -599,7 +599,7 @@ void webgpu_context::EltwiseMultMod(webgpu::buffer_binding bind, const mpz_class
     submit(command);
 }
 
-void webgpu_context::EltwiseDivMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {     WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseDivMod") };   
+void webgpu_context::EltwiseDivMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {     WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseDivMod", WGPU_STRLEN} };   
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -624,7 +624,7 @@ void webgpu_context::EltwiseDivMod(webgpu::buffer_binding bind, webgpu::eltwise_
 void webgpu_context::EltwiseMontMultMod(webgpu::buffer_binding bind, const mpz_class& k, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, k, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseMontMultMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseMontMultMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -649,7 +649,7 @@ void webgpu_context::EltwiseMontMultMod(webgpu::buffer_binding bind, const mpz_c
 void webgpu_context::EltwiseBitDecompose(webgpu::buffer_binding bind, size_t pos, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, pos, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseBitDecompose") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseBitDecompose", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -681,7 +681,7 @@ void webgpu_context::EltwisePowAddMod(webgpu::buffer_binding bind) {
 
 // Z = Z + X * Y
 void webgpu_context::EltwiseFMAMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseFMAMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseFMAMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -706,7 +706,7 @@ void webgpu_context::EltwiseFMAMod(webgpu::buffer_binding bind, webgpu::eltwise_
 void webgpu_context::EltwiseFMAMod(webgpu::buffer_binding bind, const mpz_class& k, webgpu::eltwise_offset element_offsets) {
     write_limbs(scalar_buf_, k, 1);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseFMAConstantMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseFMAConstantMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -729,7 +729,7 @@ void webgpu_context::EltwiseFMAMod(webgpu::buffer_binding bind, const mpz_class&
 }
 
 void webgpu_context::EltwiseAddAssignMod(webgpu::buffer_binding bind, webgpu::eltwise_offset element_offsets) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwiseAddAssignMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwiseAddAssignMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -755,7 +755,7 @@ void webgpu_context::EltwiseAddAssignMod(webgpu::buffer_binding bind, webgpu::el
 void webgpu_context::encode_ntt_device(webgpu::buffer_binding msg) {
     assert(msg.buffers()[0].size() == encoding_size() * device_bignum_type::num_bytes);
     
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Encode") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Encode", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -772,7 +772,7 @@ void webgpu_context::encode_ntt_device(webgpu::buffer_binding msg) {
 void webgpu_context::decode_ntt_device(webgpu::buffer_binding code) {
     assert(code.buffers()[0].size() == encoding_size() * device_bignum_type::num_bytes);
 
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Decode") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Decode", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
     
@@ -798,7 +798,7 @@ void webgpu_context::decode_ntt_device(webgpu::buffer_binding code) {
 
 void webgpu_context::ntt_forward_k(webgpu::buffer_binding bind)
 {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Forward K") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Forward K", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -813,7 +813,7 @@ void webgpu_context::ntt_forward_k(webgpu::buffer_binding bind)
 
 void webgpu_context::ntt_forward_2k(webgpu::buffer_binding bind)
 {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Forward 2K") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Forward 2K", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -828,7 +828,7 @@ void webgpu_context::ntt_forward_2k(webgpu::buffer_binding bind)
 
 void webgpu_context::ntt_forward_n(webgpu::buffer_binding bind)
 {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Forward N") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Forward N", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -883,7 +883,7 @@ void webgpu_context::ntt_forward_kernel(WGPUComputePassEncoder pass,
 
 void webgpu_context::ntt_inverse_k(webgpu::buffer_binding bind)
 {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Inverse K") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Inverse K", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -899,7 +899,7 @@ void webgpu_context::ntt_inverse_k(webgpu::buffer_binding bind)
 
 void webgpu_context::ntt_inverse_2k(webgpu::buffer_binding bind)
 {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Inverse 2K") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Inverse 2K", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -915,7 +915,7 @@ void webgpu_context::ntt_inverse_2k(webgpu::buffer_binding bind)
 
 void webgpu_context::ntt_inverse_n(webgpu::buffer_binding bind)
 {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("NTT Inverse N") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"NTT Inverse N", WGPU_STRLEN} };
     WGPUCommandEncoder encoder  = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -981,7 +981,7 @@ void webgpu_context::ntt_init_layouts() {
         };
         
         WGPUBindGroupLayoutDescriptor ntt_desc {
-            .label = WGPU_STRING("Bignum::ntt_buffer"),
+            .label = {"Bignum::ntt_buffer", WGPU_STRLEN},
             .entryCount = 1,
             .entries = &ntt_binding,
         };
@@ -1010,7 +1010,7 @@ void webgpu_context::ntt_init_layouts() {
         };
 
         WGPUBindGroupLayoutDescriptor eltwise_desc {
-            .label = WGPU_STRING("Bignum::eltwise_buffer2"),
+            .label = {"Bignum::eltwise_buffer2", WGPU_STRLEN},
             .entryCount = 2,
             .entries = eltwise_bindings,
         };
@@ -1047,7 +1047,7 @@ void webgpu_context::ntt_init_layouts() {
         };
 
         WGPUBindGroupLayoutDescriptor eltwise_desc {
-            .label = WGPU_STRING("Bignum::eltwise3_buffer3"),
+            .label = {"Bignum::eltwise3_buffer3", WGPU_STRLEN},
             .entryCount = 3,
             .entries = eltwise_bindings,
         };
@@ -1072,7 +1072,7 @@ void webgpu_context::ntt_init_layouts() {
         };
 
         WGPUBindGroupLayoutDescriptor ntt_config_desc {
-            .label = WGPU_STRING("Bignum::ntt_config"),
+            .label = {"Bignum::ntt_config", WGPU_STRLEN},
             .entryCount = 2,
             .entries = ntt_config_bindings,
         };
@@ -1090,7 +1090,7 @@ void webgpu_context::ntt_init_layouts() {
         };
 
         WGPUBindGroupLayoutDescriptor desc {
-            .label = WGPU_STRING("Bignum::input_scalar"),
+            .label = {"Bignum::input_scalar", WGPU_STRLEN},
             .entryCount = 1,
             .entries = &scalar_binding,
         };
@@ -1137,105 +1137,46 @@ void webgpu_context::ntt_init_pipelines() {
     pipelineDesc.bindGroupLayouts     = eltwise2_scalar_binds;
     WGPUPipelineLayout eltwise2_scalar_pipeline_layout = wgpuDeviceCreatePipelineLayout(device_, &pipelineDesc);
 
-    {
-        WGPUComputePipelineDescriptor ntt_desc {
-            .layout = ntt_pipeline_layout,
+    // Helper lambda to create compute pipelines with different entry points
+    auto make_pipeline = [&](WGPUPipelineLayout layout, WGPUShaderModule shader, const char* entry) {
+        WGPUComputePipelineDescriptor desc {
+            .layout = layout,
             .compute {
-                .module = ntt_shader_,
+                .module = shader,
+                .entryPoint = {entry, WGPU_STRLEN},
             },
         };
+        return wgpuDeviceCreateComputePipeline(device_, &desc);
+    };
 
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_forward_radix2");
-        ntt_forward_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
+    // NTT pipelines
+    ntt_forward_        = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_forward_radix2");
+    ntt_forward_shared_ = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_forward_radix2_shared");
+    ntt_inverse_        = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_inverse_radix2");
+    ntt_inverse_shared_ = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_inverse_radix2_shared");
+    ntt_bit_reverse_    = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_bit_reverse");
+    ntt_reduce_         = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_reduce4p");
+    ntt_adjust_inverse_ = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_adjust_inverse_reduce");
+    ntt_fold_           = make_pipeline(ntt_pipeline_layout, ntt_shader_, "ntt_fold");
 
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_forward_radix2_shared");
-        ntt_forward_shared_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
+    // Eltwise 3-operand pipelines
+    eltwise_addmod_ = make_pipeline(eltwise3_pipeline_layout, ntt_shader_, "EltwiseAddMod");
+    eltwise_submod_ = make_pipeline(eltwise3_pipeline_layout, ntt_shader_, "EltwiseSubMod");
+    eltwise_mulmod_ = make_pipeline(eltwise3_pipeline_layout, ntt_shader_, "EltwiseMultMod");
+    eltwise_divmod_ = make_pipeline(eltwise3_pipeline_layout, ntt_shader_, "EltwiseDivMod");
+    eltwise_fma_    = make_pipeline(eltwise3_pipeline_layout, ntt_shader_, "EltwiseFMAMod");
 
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_inverse_radix2");
-        ntt_inverse_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
+    // Eltwise 2-operand pipeline
+    eltwise_addassignmod_ = make_pipeline(eltwise2_pipeline_layout, ntt_shader_, "EltwiseAddAssignMod");
 
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_inverse_radix2_shared");
-        ntt_inverse_shared_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
-
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_bit_reverse");
-        ntt_bit_reverse_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
-
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_reduce4p");
-        ntt_reduce_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
-
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_adjust_inverse_reduce");
-        ntt_adjust_inverse_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
-
-        ntt_desc.compute.entryPoint = WGPU_STRING("ntt_fold");
-        ntt_fold_ = wgpuDeviceCreateComputePipeline(device_, &ntt_desc);
-    }
-
-    {
-        WGPUComputePipelineDescriptor eltwise_desc {
-            .layout = eltwise3_pipeline_layout,
-            .compute {
-                .module = ntt_shader_,
-            }
-        };
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseAddMod");
-        eltwise_addmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseSubMod");
-        eltwise_submod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseMultMod");
-        eltwise_mulmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseDivMod");
-        eltwise_divmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseFMAMod");
-        eltwise_fma_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-    }
-
-    {
-        WGPUComputePipelineDescriptor eltwise_desc {
-            .layout = eltwise2_pipeline_layout,
-            .compute {
-                .module = ntt_shader_,
-            }
-        };
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseAddAssignMod");
-        eltwise_addassignmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-    }
-
-    {
-        WGPUComputePipelineDescriptor eltwise_desc {
-            .layout = eltwise2_scalar_pipeline_layout,
-            .compute {
-                .module = ntt_shader_,
-            }
-        };
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseBitDecompose");
-        eltwise_bit_decompose_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseAddConstantMod");
-        eltwise_addcmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseSubConstantMod");
-        eltwise_subcmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseConstantSubMod");
-        eltwise_csubmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseMultConstantMod");
-        eltwise_mulcmod_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseMontMultConstantMod");
-        eltwise_montmul_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-
-        eltwise_desc.compute.entryPoint = WGPU_STRING("EltwiseFMAConstantMod");
-        eltwise_fmac_ = wgpuDeviceCreateComputePipeline(device_, &eltwise_desc);
-    }
+    // Eltwise 2-operand with scalar pipelines
+    eltwise_bit_decompose_ = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseBitDecompose");
+    eltwise_addcmod_       = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseAddConstantMod");
+    eltwise_subcmod_       = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseSubConstantMod");
+    eltwise_csubmod_       = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseConstantSubMod");
+    eltwise_mulcmod_       = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseMultConstantMod");
+    eltwise_montmul_       = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseMontMultConstantMod");
+    eltwise_fmac_          = make_pipeline(eltwise2_scalar_pipeline_layout, ntt_shader_, "EltwiseFMAConstantMod");
 
     wgpuPipelineLayoutRelease(ntt_pipeline_layout);
     wgpuPipelineLayoutRelease(eltwise2_pipeline_layout);
@@ -1584,21 +1525,17 @@ void webgpu_context::sha256_init(size_t sha_instances) {
                    placeholder.size(),
                    std::to_string(sha_instances));
 
-    WGPUShaderModuleWGSLDescriptor wgslDesc {
+    WGPUShaderSourceWGSL wgslDesc {
         .chain = WGPUChainedStruct {
             .next = nullptr,
-#if defined(__EMSCRIPTEN__)
-            .sType = WGPUSType_ShaderModuleWGSLDescriptor,
-#else
             .sType = WGPUSType_ShaderSourceWGSL,
-#endif
         },
-        .code = WGPU_STRING(source.c_str())
+        .code = {source.c_str(), source.length()}
     };
 
     WGPUShaderModuleDescriptor desc {
         .nextInChain = (WGPUChainedStruct*)&wgslDesc,
-        .label = WGPU_STRING("sha256.wgsl")
+        .label = {"sha256.wgsl", WGPU_STRLEN}
     };
 
     sha_instances_ = sha_instances;
@@ -1618,7 +1555,7 @@ void webgpu_context::sha256_init(size_t sha_instances) {
     };
 
     WGPUBindGroupLayoutDescriptor ctx_layout_desc {
-        .label = WGPU_STRING("SHA256::context"),
+        .label = {"SHA256::context", WGPU_STRLEN},
         .entryCount = 2,
         .entries = sha256_ctx_bindings,
     };
@@ -1634,7 +1571,7 @@ void webgpu_context::sha256_init(size_t sha_instances) {
     };
 
     WGPUBindGroupLayoutDescriptor layoutDesc {
-        .label = WGPU_STRING("SHA256::buffer"),
+        .label = {"SHA256::buffer", WGPU_STRLEN},
         .entryCount = 1,
         .entries = sha256_buffer_bindings,
     };
@@ -1668,18 +1605,18 @@ void webgpu_context::sha256_init(size_t sha_instances) {
         .compute { .module = sha_shader_ },
     };
 
-    compute_desc.label = WGPU_STRING("sha256 init");
-    compute_desc.compute.entryPoint = WGPU_STRING("sha256_init");
+    compute_desc.label = {"sha256 init", WGPU_STRLEN};
+    compute_desc.compute.entryPoint = {"sha256_init", WGPU_STRLEN};
     sha256_init_ = wgpuDeviceCreateComputePipeline(device_, &compute_desc);
 
-    compute_desc.label = WGPU_STRING("sha256 final");
-    compute_desc.compute.entryPoint = WGPU_STRING("sha256_final");
+    compute_desc.label = {"sha256 final", WGPU_STRLEN};
+    compute_desc.compute.entryPoint = {"sha256_final", WGPU_STRLEN};
     sha256_final_ = wgpuDeviceCreateComputePipeline(device_, &compute_desc);
 
     compute_desc.layout = update_pipeline_layout;
 
-    compute_desc.label = WGPU_STRING("sha256 update");
-    compute_desc.compute.entryPoint = WGPU_STRING("sha256_update");
+    compute_desc.label = {"sha256 update", WGPU_STRLEN};
+    compute_desc.compute.entryPoint = {"sha256_update", WGPU_STRLEN};
     sha256_update_ = wgpuDeviceCreateComputePipeline(device_, &compute_desc);
 
     wgpuPipelineLayoutRelease(init_pipeline_layout);
@@ -1688,7 +1625,7 @@ void webgpu_context::sha256_init(size_t sha_instances) {
 
 
 void webgpu_context::sha256_digest_init(webgpu::buffer_binding ctx) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sh256_digest_init") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"sh256_digest_init", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     // Clear context buffer
     auto& sha256_ctx = ctx.buffers()[0];
@@ -1713,7 +1650,7 @@ void webgpu_context::sha256_digest_init(webgpu::buffer_binding ctx) {
 
 
 void webgpu_context::sha256_digest_update(webgpu::buffer_binding ctx, webgpu::buffer_binding buf) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sha256_digest_update") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"sha256_digest_update", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -1732,7 +1669,7 @@ void webgpu_context::sha256_digest_update(webgpu::buffer_binding ctx, webgpu::bu
 
 
 void webgpu_context::sha256_digest_final(webgpu::buffer_binding ctx) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sha256_digest_final") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"sha256_digest_final", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -1759,7 +1696,7 @@ void webgpu_context::sampling_init(const std::vector<size_t>& index) {
     };
 
     WGPUBindGroupLayoutDescriptor index_desc {
-        .label = WGPU_STRING("Sampling::index"),
+        .label = {"Sampling::index", WGPU_STRLEN},
         .entryCount = sizeof(index_binding) / sizeof(WGPUBindGroupLayoutEntry),
         .entries = index_binding,
     };
@@ -1784,7 +1721,7 @@ void webgpu_context::sampling_init(const std::vector<size_t>& index) {
         };
 
         WGPUBindGroupLayoutDescriptor desc {
-            .label = WGPU_STRING("Sampling::buffer"),
+            .label = {"Sampling::buffer", WGPU_STRLEN},
             .entryCount = 2,
             .entries = bindings,
         };
@@ -1811,7 +1748,7 @@ void webgpu_context::sampling_init(const std::vector<size_t>& index) {
             .compute { .module = ntt_shader_ },
         };
 
-        desc.compute.entryPoint = WGPU_STRING("sample_gather");
+        desc.compute.entryPoint = {"sample_gather", WGPU_STRLEN};
         sampling_gather_ = wgpuDeviceCreateComputePipeline(device_, &desc);
 
         wgpuPipelineLayoutRelease(layout);
@@ -1853,7 +1790,7 @@ void webgpu_context::sampling_init(const std::vector<size_t>& index) {
 
 
 void webgpu_context::sample_gather(webgpu::buffer_binding bind, size_t sampling_offset) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("sample_gather") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"sample_gather", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 

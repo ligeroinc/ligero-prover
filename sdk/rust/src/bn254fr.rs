@@ -16,25 +16,17 @@
 
 //! BN254 Scalar Field Operations for Ligetron
 
+use crate::api::*;
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::api::*;
 
 /// A BN254 scalar field element
 ///
 /// This is an opaque handle to a field element managed by the Ligetron backend.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 struct bn254fr_t {
-    pub handle: u64
-}
-
-impl Default for bn254fr_t {
-    fn default() -> Self {
-        bn254fr_t {
-            handle: 0
-        }
-    }
+    pub handle: u64,
 }
 
 #[repr(C)]
@@ -73,7 +65,7 @@ impl Clone for Bn254Fr {
 // Internal helper function
 #[inline(always)]
 fn handle_swap(a: &mut bn254fr_t, b: &mut bn254fr_t) {
-//    std::mem::swap(&mut a.handle, &mut b.handle);
+    //    std::mem::swap(&mut a.handle, &mut b.handle);
     let th = a.handle;
     a.handle = b.handle;
     b.handle = th;
@@ -123,7 +115,7 @@ macro_rules! bn254fr_binary {
 macro_rules! unary_constrained {
     ($op:ident, $out:expr, $a:expr) => {
         let mut tmp = Bn254Fr::new();
-        $op (&mut tmp, $a);
+        $op(&mut tmp, $a);
         handle_swap(&mut $out.data, &mut tmp.data);
         $out.set_constrained(true);
     };
@@ -132,7 +124,7 @@ macro_rules! unary_constrained {
 macro_rules! binary_constrained {
     ($op:ident, $out:expr, $a:expr) => {
         let mut tmp = Bn254Fr::new();
-        $op (&mut tmp, $out, $a);
+        $op(&mut tmp, $out, $a);
         handle_swap(&mut $out.data, &mut tmp.data);
         $out.set_constrained(true);
     };
@@ -145,10 +137,28 @@ impl Bn254Fr {
     pub fn new() -> Self {
         let mut out = Bn254Fr {
             data: bn254fr_t::default(),
-            constrained: false.into()
+            constrained: false.into(),
         };
-        unsafe { _bn254fr_alloc(&mut out.data); };
+        unsafe {
+            _bn254fr_alloc(&mut out.data);
+        };
         out
+    }
+
+    /// Get the raw u64 handle for FFI calls.
+    /// This is used by higher-level modules (like uint256) that need to pass
+    /// handles to host functions.
+    #[inline(always)]
+    pub fn raw_handle(&self) -> u64 {
+        self.data.handle
+    }
+
+    /// Set the raw u64 handle from FFI calls.
+    /// This is used by higher-level modules (like uint256) after host functions
+    /// have modified the handle.
+    #[inline(always)]
+    pub fn set_raw_handle(&mut self, handle: u64) {
+        self.data.handle = handle;
     }
 
     /// Construct from u32 constant
@@ -196,6 +206,14 @@ impl Bn254Fr {
         out
     }
 
+    /// Copy value from another field element in-place
+    /// Mirrors C++ bn254fr_copy
+    pub fn copy(&mut self, src: &Bn254Fr) {
+        unsafe {
+            _bn254fr_copy(&mut self.data, &src.data);
+        }
+    }
+
     pub fn is_constrained(&self) -> bool {
         self.constrained.load(Ordering::Relaxed)
     }
@@ -205,9 +223,9 @@ impl Bn254Fr {
     }
 
     #[inline(always)]
-    pub fn clear(&mut self){
+    pub fn clear(&mut self) {
         if self.is_constrained() {
-            unsafe{
+            unsafe {
                 _bn254fr_free(&mut self.data);
                 _bn254fr_alloc(&mut self.data);
             }
@@ -258,9 +276,7 @@ impl Bn254Fr {
 
     /// Get field element as u64 (may truncate for large values)
     pub fn get_u64(&self) -> u64 {
-        unsafe {
-            _bn254fr_get_u64(&self.data)
-        }
+        unsafe { _bn254fr_get_u64(&self.data) }
     }
 
     /// Print field element for debugging (base 10 or 16)
@@ -289,7 +305,7 @@ impl Bn254Fr {
         let mut out_buff: Vec<bn254fr_t> = vec![bn254fr_t::default(); count];
         unsafe {
             for i in 0..count {
-               out_buff[i].handle =  bits[i].data.handle;
+                out_buff[i].handle = bits[i].data.handle;
             }
 
             _bn254fr_to_bits_checked(&mut out_buff[0], &self.data, count as u32);
@@ -300,6 +316,36 @@ impl Bn254Fr {
         }
         self.set_constrained(true);
         bits
+    }
+
+    /// Compose field element from bits with constraints
+    pub fn from_bits_checked(bits: &[Bn254Fr]) -> Bn254Fr {
+        let count = bits.len();
+        if count < 1 || count > 254 {
+            assert_one(0);
+            return Bn254Fr::new();
+        }
+
+        let out = Bn254Fr::new();
+
+        // Build array of handles from bits
+        let mut bits_buff: Vec<bn254fr_t> = vec![bn254fr_t::default(); count];
+        unsafe {
+            for i in 0..count {
+                bits_buff[i].handle = bits[i].data.handle;
+            }
+            _bn254fr_from_bits_checked(
+                &out.data as *const bn254fr_t as *mut bn254fr_t,
+                &bits_buff[0],
+                count as u32,
+            );
+        }
+
+        for bit in bits {
+            bit.set_constrained(true);
+        }
+        out.set_constrained(true);
+        out
     }
 
     // ============= In-place Arithmetic Operations =============
@@ -433,9 +479,7 @@ impl Bn254Fr {
 
     /// Return true if self == 0
     pub fn is_zero(&mut self) -> bool {
-        unsafe {
-            _bn254fr_eqz(&self.data)
-        }
+        unsafe { _bn254fr_eqz(&self.data) }
     }
 
     // ============= Arithmetic Constraint Assertions =============
@@ -533,53 +577,39 @@ pub fn irem(out: &mut Bn254Fr, a: &Bn254Fr, b: &Bn254Fr) {
 
 /// Return true if self == other
 pub fn eq(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_eq(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_eq(&a.data, &b.data) }
 }
 
 /// Return true if self < other
 pub fn lt(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_lt(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_lt(&a.data, &b.data) }
 }
 
 /// Return true if self <= other
 pub fn lte(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_lte(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_lte(&a.data, &b.data) }
 }
 
 /// Return true if self > other
 pub fn gt(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_gt(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_gt(&a.data, &b.data) }
 }
 
 /// Return true if self >= other
 pub fn gte(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_gte(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_gte(&a.data, &b.data) }
 }
 
 // ============= Logical Operations =============
 
 ///  Return true if both a and b are nonzero.
 pub fn land(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_land(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_land(&a.data, &b.data) }
 }
 
 ///  Return true if both a and b are nonzero.
 pub fn lor(a: &Bn254Fr, b: &Bn254Fr) -> bool {
-    unsafe {
-        _bn254fr_lor(&a.data, &b.data)
-    }
+    unsafe { _bn254fr_lor(&a.data, &b.data) }
 }
 
 // ============= Bitwise Operations =============
@@ -676,6 +706,41 @@ pub fn invmod_checked(out: &mut Bn254Fr, a: &Bn254Fr) {
     Bn254Fr::assert_mul(&one, out, a);
 }
 
+/// out = 1 if x == 0, 0 otherwise (with constraints)
+/// Implements the technique: out = -x * inv + 1 where inv = 1/x if x != 0, else 0
+pub fn eqz_checked(out: &mut Bn254Fr, x: &Bn254Fr) {
+    let one = Bn254Fr::from_u32(1);
+    let zero = Bn254Fr::from_u32(0);
+
+    // Compute inverse if x != 0, else use 0
+    let mut inv = Bn254Fr::new();
+    if x.get_u64() != 0 {
+        invmod(&mut inv, x);
+    }
+    // else inv stays 0
+
+    // out = -x * inv + 1
+    let mut neg_x = Bn254Fr::new();
+    negmod_checked(&mut neg_x, x);
+
+    let mut mul_res = Bn254Fr::new();
+    mulmod_checked(&mut mul_res, &neg_x, &inv);
+
+    addmod_checked(out, &mul_res, &one);
+
+    // Assert x * out == 0
+    let mut check = Bn254Fr::new();
+    mulmod_checked(&mut check, x, out);
+    Bn254Fr::assert_equal(&check, &zero);
+}
+
+/// out = 1 if a == b, 0 otherwise (with constraints)
+pub fn eq_checked(out: &mut Bn254Fr, a: &Bn254Fr, b: &Bn254Fr) {
+    let mut sub_res = Bn254Fr::new();
+    submod_checked(&mut sub_res, a, b);
+    eqz_checked(out, &sub_res);
+}
+
 // ============= Misc =============
 
 /// Conditional selection: out = cond ? a1 : a0, sets constraints
@@ -691,9 +756,15 @@ pub fn mux(out: &mut Bn254Fr, cond: &Bn254Fr, a0: &Bn254Fr, a1: &Bn254Fr) {
     addmod_checked(out, &a0, &tmp)
 }
 
-pub fn mux2(out: &mut Bn254Fr, s0: &Bn254Fr, s1: &Bn254Fr,
-            a0: &Bn254Fr, a1: &Bn254Fr,
-            a2: &Bn254Fr, a3: &Bn254Fr) {
+pub fn mux2(
+    out: &mut Bn254Fr,
+    s0: &Bn254Fr,
+    s1: &Bn254Fr,
+    a0: &Bn254Fr,
+    a1: &Bn254Fr,
+    a2: &Bn254Fr,
+    a3: &Bn254Fr,
+) {
     // Assert that conditions have a value of ether 0 or 1
     let one = Bn254Fr::from_u32(1);
     assert_one(lte(s0, &one));
@@ -712,7 +783,71 @@ pub fn oblivious_if(out: &mut Bn254Fr, cond: bool, t: &Bn254Fr, f: &Bn254Fr) {
     mux(out, &cond_fr, f, t)
 }
 
+// ============= Bigint Operations (for uint256) =============
+
+/// Compute product of two big integers without carry propagation.
+/// Used internally by uint256 multiplication.
+/// out must have length 2*count-1, a and b must have length count.
+pub fn bigint_mul_checked_no_carry(out: &mut [Bn254Fr], a: &[Bn254Fr], b: &[Bn254Fr]) {
+    let count = a.len();
+    assert_eq!(b.len(), count);
+    assert_eq!(out.len(), 2 * count - 1);
+
+    // Extract handles into contiguous arrays
+    let a_handles: Vec<u64> = a.iter().map(|f| f.raw_handle()).collect();
+    let b_handles: Vec<u64> = b.iter().map(|f| f.raw_handle()).collect();
+    let mut out_handles: Vec<u64> = out.iter().map(|f| f.raw_handle()).collect();
+
+    unsafe {
+        _bn254fr_bigint_mul_checked_no_carry(
+            out_handles.as_mut_ptr(),
+            a_handles.as_ptr(),
+            b_handles.as_ptr(),
+            count as u32,
+        );
+    }
+
+    // Copy handles back
+    for (i, h) in out_handles.into_iter().enumerate() {
+        out[i].set_raw_handle(h);
+    }
+}
+
+/// Convert big integer to proper representation with carry propagation.
+/// Used internally by uint256 multiplication.
+/// out must have length count+1, inp must have length count.
+pub fn bigint_convert_to_proper_representation(
+    out: &mut [Bn254Fr],
+    inp: &mut [Bn254Fr],
+    bits: u32,
+) {
+    let count = inp.len();
+    assert_eq!(out.len(), count + 1);
+
+    // Extract handles into contiguous arrays
+    let mut inp_handles: Vec<u64> = inp.iter().map(|f| f.raw_handle()).collect();
+    let mut out_handles: Vec<u64> = out.iter().map(|f| f.raw_handle()).collect();
+
+    unsafe {
+        _bn254fr_bigint_convert_to_proper_representation(
+            out_handles.as_mut_ptr(),
+            inp_handles.as_mut_ptr(),
+            count as u32,
+            bits,
+        );
+    }
+
+    // Copy handles back
+    for (i, h) in out_handles.into_iter().enumerate() {
+        out[i].set_raw_handle(h);
+    }
+    for (i, h) in inp_handles.into_iter().enumerate() {
+        inp[i].set_raw_handle(h);
+    }
+}
+
 // Import declarations for all BN254FR functions
+// Order matches C++ bn254fr.hpp initialize() for consistency
 #[link(wasm_import_module = "bn254fr")]
 extern "C" {
     // Memory management
@@ -722,28 +857,49 @@ extern "C" {
     #[link_name = "bn254fr_free"]
     fn _bn254fr_free(fr: *mut bn254fr_t);
 
-    // Initialization
+    // Setters
     #[link_name = "bn254fr_set_u32"]
     fn _bn254fr_set_u32(out: *mut bn254fr_t, x: u32);
 
     #[link_name = "bn254fr_set_u64"]
     fn _bn254fr_set_u64(out: *mut bn254fr_t, x: u64);
 
-    #[link_name = "bn254fr_set_str"]
-    fn _bn254fr_set_str(out: *mut bn254fr_t, s: *const i8, base: u32);
-
     #[link_name = "bn254fr_set_bytes"]
     fn _bn254fr_set_bytes(out: *mut bn254fr_t, bytes: *const u8, len: u32, order: i32);
+
+    #[link_name = "bn254fr_set_str"]
+    fn _bn254fr_set_str(out: *mut bn254fr_t, s: *const i8, base: u32);
 
     // Getters
     #[link_name = "bn254fr_get_u64"]
     fn _bn254fr_get_u64(x: *const bn254fr_t) -> u64;
 
+    // Copy / Print
     #[link_name = "bn254fr_copy"]
     fn _bn254fr_copy(dest: *mut bn254fr_t, src: *const bn254fr_t);
 
     #[link_name = "bn254fr_print"]
     fn _bn254fr_print(a: *const bn254fr_t, base: u32);
+
+    // Constraint assertions
+    #[link_name = "bn254fr_assert_equal"]
+    fn _bn254fr_assert_equal(a: *const bn254fr_t, b: *const bn254fr_t);
+
+    #[link_name = "bn254fr_assert_add"]
+    fn _bn254fr_assert_add(out: *const bn254fr_t, a: *const bn254fr_t, b: *const bn254fr_t);
+
+    #[link_name = "bn254fr_assert_mul"]
+    fn _bn254fr_assert_mul(out: *const bn254fr_t, a: *const bn254fr_t, b: *const bn254fr_t);
+
+    #[link_name = "bn254fr_assert_mulc"]
+    fn _bn254fr_assert_mulc(out: *const bn254fr_t, a: *const bn254fr_t, k: *const bn254fr_t);
+
+    // Checked bit operations
+    #[link_name = "bn254fr_to_bits_checked"]
+    fn _bn254fr_to_bits_checked(outs: *mut bn254fr_t, a: *const bn254fr_t, count: u32);
+
+    #[link_name = "bn254fr_from_bits_checked"]
+    fn _bn254fr_from_bits_checked(outs: *mut bn254fr_t, bits: *const bn254fr_t, count: u32);
 
     // Arithmetic
     #[link_name = "bn254fr_addmod"]
@@ -812,35 +968,34 @@ extern "C" {
     #[link_name = "bn254fr_bnot"]
     fn _bn254fr_bnot(out: *mut bn254fr_t, a: *const bn254fr_t);
 
+    // Unchecked bit operations
     #[link_name = "bn254fr_to_bits"]
     fn _bn254fr_to_bits(outs: *mut bn254fr_t, a: *const bn254fr_t, count: u32);
-
-    #[link_name = "bn254fr_to_bits_checked"]
-    fn _bn254fr_to_bits_checked(outs: *mut bn254fr_t, a: *const bn254fr_t, count: u32);
 
     #[link_name = "bn254fr_from_bits"]
     fn _bn254fr_from_bits(outs: *mut bn254fr_t, bits: *const bn254fr_t, count: u32);
 
-    #[link_name = "bn254fr_from_bits_checked"]
-    fn _bn254fr_from_bits_checked(outs: *mut bn254fr_t, bits: *const bn254fr_t, count: u32);
-
-    // Shift Operations
+    // Shift operations
     #[link_name = "bn254fr_shrmod"]
     fn _bn254fr_shrmod(out: *mut bn254fr_t, a: *const bn254fr_t, b: *const bn254fr_t);
 
     #[link_name = "bn254fr_shlmod"]
     fn _bn254fr_shlmod(out: *mut bn254fr_t, a: *const bn254fr_t, b: *const bn254fr_t);
 
-    // Zero knowledge
-    #[link_name = "bn254fr_assert_equal"]
-    fn _bn254fr_assert_equal(a: *const bn254fr_t, b: *const bn254fr_t);
+    // Bigint operations (used by uint256)
+    #[link_name = "bn254fr_bigint_mul_checked_no_carry"]
+    fn _bn254fr_bigint_mul_checked_no_carry(
+        out: *mut u64,
+        a: *const u64,
+        b: *const u64,
+        count: u32,
+    );
 
-    #[link_name = "bn254fr_assert_add"]
-    fn _bn254fr_assert_add(out: *const bn254fr_t, a: *const bn254fr_t, b: *const bn254fr_t);
-
-    #[link_name = "bn254fr_assert_mul"]
-    fn _bn254fr_assert_mul(out: *const bn254fr_t, a: *const bn254fr_t, b: *const bn254fr_t);
-
-    #[link_name = "bn254fr_assert_mulc"]
-    fn _bn254fr_assert_mulc(out: *const bn254fr_t, a: *const bn254fr_t, k: *const bn254fr_t);
+    #[link_name = "bn254fr_bigint_convert_to_proper_representation"]
+    fn _bn254fr_bigint_convert_to_proper_representation(
+        out: *mut u64,
+        inp: *mut u64,
+        count: u32,
+        bits: u32,
+    );
 }

@@ -105,7 +105,7 @@ public:
     friend void swap(uint256 &first, uint256 &second);
 
     /// Adds equality constraints for two uint256 values
-    friend void assert_equal(const uint256 &x, const uint256 &y);
+    static void assert_equal(const uint256 &x, const uint256 &y);
 
     /// Prints value to output stream
     void print() const;

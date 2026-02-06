@@ -123,6 +123,9 @@ struct bn254fr_class {
     /** Decompose a into `count` bits, stored in count-sized 'bn254fr_class' array (outs) as 0 or 1 field values. */
     void to_bits(bn254fr_class* outs, uint32_t count);
 
+    /** Compose this value from `count` bits, stored in count-sized 'bn254fr_class' array (in) as 0 or 1 field values. */
+    void from_bits(bn254fr_class* in, uint32_t count);
+
     /* --------------- Zero Knowledge --------------- */
     /** Assert a == b in the field (constraint only). */
     static void assert_equal(bn254fr_class& a, bn254fr_class& b);/* --------------- Helper functions --------------- */

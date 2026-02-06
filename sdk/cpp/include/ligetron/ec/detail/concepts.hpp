@@ -1,0 +1,60 @@
+/*
+ * Copyright (C) 2023-2025 Ligero, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * Definitions of elliptic curve concepts.
+ */
+
+#ifndef __LIGETRON_EC_DETAIL_CONCEPTS_HPP__
+#define __LIGETRON_EC_DETAIL_CONCEPTS_HPP__
+
+#include <concepts>
+#include <ligetron/ff/concepts.h>
+
+
+namespace ligetron::ec::detail {
+
+
+/// Generic elliptic curve concept
+template <typename EC>
+concept EllipticCurve = requires(const typename EC::point& a,
+                                 const typename EC::point& b,
+                                 const typename EC::scalar_field_element& s) {
+    typename EC::base_field_element;
+    typename EC::scalar_field_element;
+    typename EC::point;
+
+    { EC::point_add(a, b) } -> std::convertible_to<typename EC::point>;
+    { EC::point_double(a) } -> std::convertible_to<typename EC::point>;
+    { EC::scalar_mul(s, a) } -> std::convertible_to<typename EC::point>;
+
+    { EC::point_x_to_scalar(a) } ->
+        std::convertible_to<typename EC::scalar_field_element>;
+};
+
+/// Elliptic curve with scalar multiplication optimized for generator point
+template <typename EC>
+concept EllipticCurveWithScalarMulGenerator = EllipticCurve<EC> &&
+        requires(const typename EC::scalar_field_element& s) {
+
+    { EC::scalar_mul_generator(s) } -> std::convertible_to<typename EC::point>;
+};
+
+
+}
+
+
+#endif // __LIGETRON_EC_DETAIL_CONCEPTS_HPP__

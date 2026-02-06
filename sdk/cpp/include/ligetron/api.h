@@ -33,7 +33,7 @@ LIGETRON_API(env, assert_constant) void assert_constant(int);
 
 /* Witness promotion */
 LIGETRON_API(env, witness_cast_u32) uint32_t witness_cast_u32(uint32_t x);
-LIGETRON_API(env, witness_cast_u64) uint32_t witness_cast_u64(uint64_t x);
+LIGETRON_API(env, witness_cast_u64) uint64_t witness_cast_u64(uint64_t x);
 
 /* Debug */
 LIGETRON_API(env, print_str)       void print_str(const void*, int);

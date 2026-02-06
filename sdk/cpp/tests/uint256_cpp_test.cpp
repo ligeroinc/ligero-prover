@@ -331,7 +331,7 @@ void test_to_from_bits() {
 
     x.to_bits(bits);
     y.from_bits(bits);
-    assert_equal(x, y);
+    uint256::assert_equal(x, y);
 }
 
 void test_print() {
@@ -462,7 +462,7 @@ void test_move() {
 
     uint256 zero;
     uint256 x;
-    assert_equal(x, zero);
+    uint256::assert_equal(x, zero);
 
     uint256 y{str};
     x.move(std::move(y));
@@ -483,7 +483,7 @@ void test_copy_assign() {
 
     uint256 zero;
     uint256 x;
-    assert_equal(x, zero);
+    uint256::assert_equal(x, zero);
 
     uint256 y{str};
     x = y;
@@ -513,7 +513,7 @@ void test_move_assign() {
 
     uint256 zero;
     uint256 x;
-    assert_equal(x, zero);
+    uint256::assert_equal(x, zero);
 
     uint256 y{str};
     x = std::move(y);
@@ -541,7 +541,7 @@ void do_test_add_cc(const std::string &a_str,
 
     auto [res, carry] = add_cc(a, b);
 
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
     bn254fr_class::assert_equal(carry, exp_carry);
 }
 
@@ -566,7 +566,7 @@ void do_test_add(const std::string &a_str,
     uint256 exp{exp_str.c_str()};
 
     auto res = a + b;
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_add() {
@@ -592,7 +592,7 @@ void do_test_sub_cc(const std::string &a_str,
 
     auto [res, underflow] = sub_cc(a, b);
 
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
     bn254fr_class::assert_equal(underflow, exp_underflow);
 }
 
@@ -618,7 +618,7 @@ void do_test_sub(const std::string &a_str,
     uint256 exp{exp_str.c_str()};
 
     auto res = a - b;
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_sub() {
@@ -643,8 +643,8 @@ void do_test_mul_wide(const std::string &a_str,
     uint256 exp_high{exp_high_str.c_str()};
 
     auto [low, high] = mul_wide(a, b);
-    assert_equal(low, exp_low);
-    assert_equal(high, exp_high);
+    uint256::assert_equal(low, exp_low);
+    uint256::assert_equal(high, exp_high);
 }
 
 void test_mul_wide() {
@@ -670,7 +670,7 @@ void do_test_mul_lo(const std::string &a_str,
     uint256 exp{exp_str.c_str()};
 
     auto res = mul_lo(a, b);
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_mul_lo() {
@@ -693,7 +693,7 @@ void do_test_mul_hi(const std::string &a_str,
     uint256 exp{exp_str.c_str()};
 
     auto res = mul_hi(a, b);
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_mul_hi() {
@@ -716,7 +716,7 @@ void do_test_mul(const std::string &a_str,
     uint256 exp{exp_str.c_str()};
 
     auto res = a * b;
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_mul() {
@@ -752,9 +752,9 @@ void do_test_divide_qr(const std::string &a_low_str,
 
     a.divide_qr_normalized(q_low, q_high, r, b);
 
-    assert_equal(q_low, exp_q_low);
+    uint256::assert_equal(q_low, exp_q_low);
     bn254fr_class::assert_equal(q_high, exp_q_high);
-    assert_equal(r, exp_r);
+    uint256::assert_equal(r, exp_r);
 }
 
 void test_divide_qr() {
@@ -782,7 +782,7 @@ void do_test_inv(const std::string &a_str,
     uint256 exp{exp_str.c_str()};
 
     auto res = invmod(a, m);
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_inv() {
@@ -801,8 +801,8 @@ void test_mux() {
 
     auto res1 = mux(cond1, a, b);
     auto res2 = mux(cond2, a, b);
-    assert_equal(res1, b);
-    assert_equal(res2, a);
+    uint256::assert_equal(res1, b);
+    uint256::assert_equal(res2, a);
 }
 
 void do_test_eq(const std::string &a_str,
@@ -852,7 +852,7 @@ void do_test_mod(const std::string &a_low_str,
 
     auto res = a % m;
     res.print();
-    assert_equal(res, exp);
+    uint256::assert_equal(res, exp);
 }
 
 void test_mod() {

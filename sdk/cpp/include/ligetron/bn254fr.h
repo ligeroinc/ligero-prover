@@ -357,6 +357,25 @@ uint64_t bn254fr_get_u64_checked(const bn254fr_t x);
 
 void bn254fr_to_bytes_checked(unsigned char *out, bn254fr_t x, uint32_t len, int32_t order);
 
+void bn254fr_eqz_checked(bn254fr_t out, const bn254fr_t x);
+
+void bn254fr_eq_checked(bn254fr_t out, const bn254fr_t a, const bn254fr_t b);
+
+void bn254fr_lt_checked(bn254fr_t out,
+                        const bn254fr_t a,
+                        const bn254fr_t b,
+                        uint32_t u32_n_bits);
+
+/* Computes logical AND for two single-bit bn254 values,
+ * which must be either 0 or 1.
+ */
+void bn254fr_land_checked(bn254fr_t out, const bn254fr_t a, const bn254fr_t b);
+
+/* Computes logical OR for two single-bit bn254 values,
+ * which must be either 0 or 1.
+ */
+void bn254fr_lor_checked(bn254fr_t out, const bn254fr_t a, const bn254fr_t b);
+
 /**
  * out = cond ? a1 : a0
  * sets appropriate constraints
@@ -378,19 +397,53 @@ void bn254fr_mux2(bn254fr_t out,
 
 /** Compute the product of two big integers of `count` limbs each
     without carry, add constraints.
-    The arrays `a` and `b` must each have length `count`.
-    The `out` array must have length count*2-1.
+    The array `a` must have length `a_count`.
+    The array `b` must have length `b_count`.
+    The `out` array must have length a_count + b_count - 1.
 */
 LIGETRON_API(bn254fr, bn254fr_bigint_mul_checked_no_carry)
 void bn254fr_bigint_mul_checked_no_carry(const bn254fr_t* out,
                                          const bn254fr_t* a,
                                          const bn254fr_t* b,
-                                         uint32_t count);
+                                         uint32_t a_count,
+                                         uint32_t b_count);
+
+uint32_t bn254fr_bigint_mul_checked_no_carry_bits(uint32_t a_limbs,
+                                                  uint32_t a_bits,
+                                                  uint32_t b_limbs,
+                                                  uint32_t b_bits);
+
+/** Compute the product of two big integers of `count` limbs each,
+    without adding constraints.
+    The array `a` must have length `a_count`.
+    The array `b` must have length `b_count`.
+    The `out` array must have length a_count + b_count.
+*/
+LIGETRON_API(bn254fr, bn254fr_bigint_mul)
+void bn254fr_bigint_mul(bn254fr_t* out,
+                        const bn254fr_t* a,
+                        const bn254fr_t* b,
+                        uint32_t a_count,
+                        uint32_t b_count,
+                        uint32_t bits);
+
+/** Compute the product of two big integers of `count` limbs each,
+    adds constraints.
+    The array `a` must have length `a_count`.
+    The array `b` must have length `b_count`.
+    The `out` array must have length a_count + b_count.
+*/
+void bn254fr_bigint_mul_checked(bn254fr_t* out,
+                                const bn254fr_t* a,
+                                const bn254fr_t* b,
+                                uint32_t a_count,
+                                uint32_t b_count,
+                                uint32_t bits);
 
 /** Convert big integer to proper representation taking into account carry.
     The `in` array must have length `count`.
     The `out` array must have length `count + 1`.
-    The bits parameter specifies number of bits in each limb int
+    The bits parameter specifies number of bits in each limb in
     proper representation and must be <= 126.
 */
 LIGETRON_API(bn254fr, bn254fr_bigint_convert_to_proper_representation)
@@ -398,6 +451,97 @@ void bn254fr_bigint_convert_to_proper_representation(bn254fr_t* out,
                                                      bn254fr_t* in,
                                                      uint32_t count,
                                                      uint32_t bits);
+
+/** Convert big integer to overflow representation with specified number
+    of overflow bits. The input can be in overflow representation itself.
+    The `in` array must have `in_count` length.
+    The `out` array must have `out_count` length.
+    The `bits` parameter specifies number of bits in each limb in
+    proper representation.
+    The `overflow_bits` parameter specifies number of bits in each
+    limb in output overflow representation.
+*/
+LIGETRON_API(bn254fr, bn254fr_bigint_convert_to_overflow_representation)
+void bn254fr_bigint_convert_to_overflow_representation(bn254fr_t* out,
+                                                       bn254fr_t* in,
+                                                       uint32_t out_count,
+                                                       uint32_t in_count,
+                                                       uint32_t bits,
+                                                       uint32_t overflow_bits);
+
+LIGETRON_API(bn254fr, bn254fr_bigint_convert_to_proper_representation_unsigned)
+void bn254fr_bigint_convert_to_proper_representation_unsigned(bn254fr_t* out,
+                                                              const bn254fr_t* in,
+                                                              uint32_t out_count,
+                                                              uint32_t int_count,
+                                                              uint32_t bits);
+
+LIGETRON_API(bn254fr, bn254fr_bigint_convert_to_proper_representation_signed)
+void bn254fr_bigint_convert_to_proper_representation_signed(bn254fr_t* out,
+                                                            const bn254fr_t* in,
+                                                            uint32_t out_count,
+                                                            uint32_t int_count,
+                                                            uint32_t bits);
+
+void bn254fr_bigint_convert_to_proper_representation_signed_checked(
+        bn254fr_t* out,
+        const bn254fr_t* in,
+        uint32_t out_count,
+        uint32_t int_count,
+        uint32_t out_bits,
+        uint32_t in_bits);
+
+/** Performs big integer division without adding constraints.
+    The `a` and q arrays must have length `a_count`.
+    The `b` and r arrays must have length `b_count`.
+*/
+LIGETRON_API(bn254fr, bn254fr_bigint_idiv)
+void bn254fr_bigint_idiv(bn254fr_t *q,
+                         bn254fr_t *r,
+                         const bn254fr_t *a,
+                         const bn254fr_t *b,
+                         uint32_t a_count,
+                         uint32_t b_count,
+                         uint32_t bits);
+
+/** Performs big integer modulus inversion without constraints:
+    out = a^-1 mod m.
+    The `a` array must have length `a_count`.
+    The `m` and out arrays must have length `m_count`.
+*/
+LIGETRON_API(bn254fr, bn254fr_bigint_invmod)
+void bn254fr_bigint_invmod(bn254fr_t *out,
+                           bn254fr_t *a,
+                           bn254fr_t *m,
+                           uint32_t a_count,
+                           uint32_t m_count,
+                           uint32_t bits);
+
+/** Performs big integer modulus inversion with constraints:
+    out = a^-1 mod m.
+    The `a` array must have length `a_count`.
+    The `m` and out arrays must have length `m_count`.
+*/
+void bn254fr_bigint_invmod_checked(bn254fr_t *out,
+                                   bn254fr_t *a,
+                                   bn254fr_t *m,
+                                   uint32_t a_count,
+                                   uint32_t m_count,
+                                   uint32_t bits);
+
+uint32_t bn254fr_bigint_proper_size(uint32_t n_limbs,
+                                    uint32_t n_bits,
+                                    uint32_t n_overflow_bits);
+
+LIGETRON_API(bn254fr, bn254fr_bigint_print)
+void bn254fr_bigint_print(bn254fr_t *x, uint32_t n_limbs, uint32_t n_bits);
+
+void bn254fr_bigint_lt_checked(bn254fr_t out,
+                               const bn254fr_t *a,
+                               const bn254fr_t *b,
+                               size_t count,
+                               uint32_t n_bits);
+
 
 #ifdef __cplusplus
 } // extern "C"

@@ -44,3 +44,11 @@ target_link_libraries(eddsa ligetron)
 
 add_executable(eddsa_batch EdDSA/eddsa_batch_verify_no_args.cpp)
 target_link_libraries(eddsa_batch ligetron)
+
+# ECDSA
+# ------------------------------------------------------------
+
+add_executable(ecdsa_p256_verify ECDSA/ecdsa_p256_verify.cpp)
+target_link_libraries(ecdsa_p256_verify ligetron)
+target_link_options(ecdsa_p256_verify PRIVATE "-sSTACK_SIZE=100000000")
+

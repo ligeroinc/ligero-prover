@@ -18,8 +18,9 @@
 #include <ligetron/api.h>
 
 
-void test_set_get_u32(uint32_t priv_x) {
+void test_set_get_u32() {
     uint32_t pub_x = 10;
+    uint32_t priv_x = witness_cast_u32(uint32_t{0x22312231});
 
     bn254fr_t pub_bn;
     bn254fr_alloc(pub_bn);
@@ -36,8 +37,9 @@ void test_set_get_u32(uint32_t priv_x) {
     bn254fr_free(priv_bn);
 }
 
-void test_set_get_u64(uint64_t priv_x) {
+void test_set_get_u64() {
     uint64_t pub_x = 20;
+    uint64_t priv_x = witness_cast_u64(uint64_t{0x56599a32826a8b4});
 
     bn254fr_t pub_bn;
     bn254fr_alloc(pub_bn);
@@ -48,14 +50,15 @@ void test_set_get_u64(uint64_t priv_x) {
 
     bn254fr_t priv_bn;
     bn254fr_alloc(priv_bn);
-    bn254fr_set_u32_checked(priv_bn, priv_x);
+    bn254fr_set_u64_checked(priv_bn, priv_x);
     uint64_t priv_y = bn254fr_get_u64(priv_bn);
     assert_one(priv_y == priv_x);
     bn254fr_free(priv_bn);
 }
 
-void test_set_get_u64_checked(uint64_t priv_x) {
+void test_set_get_u64_checked() {
     uint64_t pub_x = 20;
+    uint64_t priv_x = witness_cast_u64(uint64_t{0x56599a32826a8b4});
 
     bn254fr_t pub_bn;
     bn254fr_alloc(pub_bn);
@@ -138,8 +141,9 @@ void test_set_bytes_checked() {
     bn254fr_free(y);
 }
 
-void test_assert_equal_u32(uint32_t priv_u32) {
+void test_assert_equal_u32() {
     uint32_t pub_u32 = 20;
+    uint32_t priv_u32 = witness_cast_u32(uint32_t{0x23551123});
 
     bn254fr_t pub_bn;
     bn254fr_alloc(pub_bn);
@@ -154,8 +158,9 @@ void test_assert_equal_u32(uint32_t priv_u32) {
     bn254fr_free(priv_bn);
 }
 
-void test_assert_equal_u64(uint32_t priv_u64) {
+void test_assert_equal_u64() {
     uint64_t pub_u64 = 0xAB12332222ULL;
+    uint64_t priv_u64 = witness_cast_u64(uint64_t{0x2255881238124123});
 
     bn254fr_t pub_bn;
     bn254fr_alloc(pub_bn);
@@ -170,8 +175,9 @@ void test_assert_equal_u64(uint32_t priv_u64) {
     bn254fr_free(priv_bn);
 }
 
-void test_assert_equal_bytes(uint64_t priv_u64) {
+void test_assert_equal_bytes() {
     uint64_t pub_u64 = 0xA728D82287F823;
+    uint64_t priv_u64 = witness_cast_u64(uint64_t{0x27898AF227123123});
     auto pub_bytes = reinterpret_cast<unsigned char*>(&pub_u64);
     auto priv_bytes = reinterpret_cast<unsigned char*>(&priv_u64);
 
@@ -351,22 +357,19 @@ void test_mux2() {
 }
 
 int main(int argc, char * argv[]) {
-    uint32_t u32_priv = static_cast<uint32_t>(*reinterpret_cast<uint64_t*>(argv[1]));
-    uint32_t u64_priv = *reinterpret_cast<uint64_t*>(argv[1]);
-
     test_to_bits();
     test_from_bits();
     test_to_bits_checked();
     test_from_bits_checked();
-    test_set_get_u32(u32_priv);
-    test_set_get_u64(u64_priv);
-    test_set_get_u64_checked(u64_priv);
+    test_set_get_u32();
+    test_set_get_u64();
+    test_set_get_u64_checked();
     test_to_bytes();
     test_to_bytes_checked();
     test_set_bytes_checked();
-    test_assert_equal_u32(u32_priv);
-    test_assert_equal_u64(u64_priv);
-    test_assert_equal_bytes(u64_priv);
+    test_assert_equal_u32();
+    test_assert_equal_u64();
+    test_assert_equal_bytes();
     test_mux();
     test_mux2();
 

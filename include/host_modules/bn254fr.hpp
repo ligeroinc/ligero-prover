@@ -733,15 +733,16 @@ struct bn254fr_module : public host_module {
     }
 
     void bn254fr_bigint_mul_checked_no_carry() {
-        u32 count  = ctx_->stack_pop().as_u32();
+        u32 b_count  = ctx_->stack_pop().as_u32();
+        u32 a_count  = ctx_->stack_pop().as_u32();
         u32 b_addr = ctx_->stack_pop().as_u32();
         u32 a_addr = ctx_->stack_pop().as_u32();
         u32 c_addr = ctx_->stack_pop().as_u32();
 
         // compute c = a * b multiplication
         auto mul_res = ctx_->backend().manager().acquire_mpz();
-        for (size_t i = 0; i < count; ++i) {
-            for (size_t j = 0; j < count; ++j) {
+        for (size_t i = 0; i < a_count; ++i) {
+            for (size_t j = 0; j < b_count; ++j) {
                 auto *a_i = load_bn254(a_addr + i * sizeof(uint64_t));
                 auto *b_j = load_bn254(b_addr + j * sizeof(uint64_t));
                 auto *c_i_j = load_bn254(c_addr + i * sizeof(uint64_t) +
@@ -753,7 +754,75 @@ struct bn254fr_module : public host_module {
         }
 
         // check equality of c and a * b polynomials
-        bn254fr_assert_poly_mul(c_addr, a_addr, b_addr, count);
+        bn254fr_assert_poly_mul(c_addr, a_addr, b_addr, a_count, b_count);
+    }
+
+    void bn254fr_bigint_mul() {
+        u32 bits = ctx_->stack_pop().as_u32();
+        u32 b_count  = ctx_->stack_pop().as_u32();
+        u32 a_count  = ctx_->stack_pop().as_u32();
+        u32 b_addr = ctx_->stack_pop().as_u32();
+        u32 a_addr = ctx_->stack_pop().as_u32();
+        u32 out_addr = ctx_->stack_pop().as_u32();
+
+        auto a = compose_big_int(a_addr, a_count, bits);
+        auto b = compose_big_int(b_addr, b_count, bits);
+
+        auto out = ctx_->backend().manager().acquire_mpz();
+        *out = (*a) * (*b);
+
+        decompose_big_int(out_addr, a_count + b_count, out, bits);
+
+        ctx_->backend().manager().recycle_mpz(a);
+        ctx_->backend().manager().recycle_mpz(b);
+        ctx_->backend().manager().recycle_mpz(out);
+    }
+
+    void bn254fr_bigint_idiv() {
+        u32 bits = ctx_->stack_pop().as_u32();
+        u32 b_count  = ctx_->stack_pop().as_u32();
+        u32 a_count  = ctx_->stack_pop().as_u32();
+        u32 b_addr = ctx_->stack_pop().as_u32();
+        u32 a_addr = ctx_->stack_pop().as_u32();
+        u32 r_addr = ctx_->stack_pop().as_u32();
+        u32 q_addr = ctx_->stack_pop().as_u32();
+
+        auto a = compose_big_int(a_addr, a_count, bits);
+        auto b = compose_big_int(b_addr, b_count, bits);
+
+        auto q = ctx_->backend().manager().acquire_mpz();
+        auto r = ctx_->backend().manager().acquire_mpz();
+        mpz_fdiv_qr(q->get_mpz_t(),
+                    r->get_mpz_t(),
+                    a->get_mpz_t(),
+                    b->get_mpz_t());
+
+        decompose_big_int(q_addr, a_count, q, bits);
+        decompose_big_int(r_addr, b_count, r, bits);
+
+        ctx_->backend().manager().recycle_mpz(q);
+        ctx_->backend().manager().recycle_mpz(r);
+    }
+
+    void bn254fr_bigint_invmod() {
+        u32 bits = ctx_->stack_pop().as_u32();
+        u32 m_count  = ctx_->stack_pop().as_u32();
+        u32 a_count  = ctx_->stack_pop().as_u32();
+        u32 m_addr = ctx_->stack_pop().as_u32();
+        u32 a_addr = ctx_->stack_pop().as_u32();
+        u32 out_addr = ctx_->stack_pop().as_u32();
+
+        auto a = compose_big_int_signed(a_addr, a_count, bits);
+        auto m = compose_big_int_signed(m_addr, m_count, bits);
+
+        auto out = ctx_->backend().manager().acquire_mpz();
+        mpz_invert(out->get_mpz_t(),
+                   a->get_mpz_t(),
+                   m->get_mpz_t());
+
+        decompose_big_int(out_addr, m_count, out, bits);
+
+        ctx_->backend().manager().recycle_mpz(out);
     }
 
     /// Splits mpz value into two values n_bits bits each
@@ -790,11 +859,45 @@ struct bn254fr_module : public host_module {
         return res;
     }
 
+    void bn254fr_bigint_convert_to_proper_representation_signed() {
+        u32 bits      = ctx_->stack_pop().as_u32();
+        u32 in_count  = ctx_->stack_pop().as_u32();
+        u32 out_count = ctx_->stack_pop().as_u32();
+        u32 in_addr   = ctx_->stack_pop().as_u32();
+        u32 out_addr  = ctx_->stack_pop().as_u32();
+
+        auto val = compose_big_int_signed(in_addr, in_count, bits);
+        decompose_big_int(out_addr, out_count, val, bits);
+        ctx_->backend().manager().recycle_mpz(val);
+    }
+
+    void bn254fr_bigint_print() {
+        u32 bits  = ctx_->stack_pop().as_u32();
+        u32 limbs = ctx_->stack_pop().as_u32();
+        u32 addr  = ctx_->stack_pop().as_u32();
+
+        auto val = compose_big_int_signed(addr, limbs, bits);
+        gmp_printf("@bn254fr_bigint_print %Zx\n", val->get_mpz_t());
+        ctx_->backend().manager().recycle_mpz(val);
+    }
+
+    void bn254fr_bigint_convert_to_proper_representation_unsigned() {
+        u32 bits      = ctx_->stack_pop().as_u32();
+        u32 in_count  = ctx_->stack_pop().as_u32();
+        u32 out_count = ctx_->stack_pop().as_u32();
+        u32 in_addr   = ctx_->stack_pop().as_u32();
+        u32 out_addr  = ctx_->stack_pop().as_u32();
+
+        auto val = compose_big_int(in_addr, in_count, bits);
+        decompose_big_int(out_addr, out_count, val, bits);
+        ctx_->backend().manager().recycle_mpz(val);
+    }
+
     void bn254fr_bigint_convert_to_proper_representation() {
-        u32 bits     = ctx_->stack_pop().as_u32();
-        u32 count    = ctx_->stack_pop().as_u32();
-        u32 in_addr  = ctx_->stack_pop().as_u32();
-        u32 out_addr = ctx_->stack_pop().as_u32();
+        u32 bits      = ctx_->stack_pop().as_u32();
+        u32 count     = ctx_->stack_pop().as_u32();
+        u32 in_addr   = ctx_->stack_pop().as_u32();
+        u32 out_addr  = ctx_->stack_pop().as_u32();
 
         // split all limbs into 3 values bits each
         std::vector<std::array<mpz_class*, 3>> splits;
@@ -865,22 +968,44 @@ struct bn254fr_module : public host_module {
         }
     }
 
+    void bn254fr_bigint_convert_to_overflow_representation() {
+        u32 overflow_bits = ctx_->stack_pop().as_u32();
+        u32 bits          = ctx_->stack_pop().as_u32();
+        u32 in_count      = ctx_->stack_pop().as_u32();
+        u32 out_count     = ctx_->stack_pop().as_u32();
+        u32 in_addr       = ctx_->stack_pop().as_u32();
+        u32 out_addr      = ctx_->stack_pop().as_u32();
+
+        auto val = compose_big_int(in_addr, in_count, bits);
+        decompose_big_int_overflow(out_addr,
+                                   out_count,
+                                   val,
+                                   bits,
+                                   overflow_bits);
+        ctx_->backend().manager().recycle_mpz(val);
+    }
+
     void initialize() override {
         call_lookup_table_ = {
+            // Memory management
             { "bn254fr_alloc",              &Self::bn254fr_alloc              },
             { "bn254fr_free",               &Self::bn254fr_free               },
 
+            // Setters
             { "bn254fr_set_u32",            &Self::bn254fr_set_u32            },
             { "bn254fr_set_u64",            &Self::bn254fr_set_u64            },
             { "bn254fr_set_bytes",          &Self::bn254fr_set_bytes          },
             { "bn254fr_set_str",            &Self::bn254fr_set_str            },
 
+            // Getters
             { "bn254fr_get_u64",            &Self::bn254fr_get_u64            },
             { "bn254fr_to_bytes",           &Self::bn254fr_to_bytes           },
 
+            // Copy / Print
             { "bn254fr_copy",               &Self::bn254fr_copy               },
             { "bn254fr_print",              &Self::bn254fr_print              },
 
+            // Constraint assertions
             { "bn254fr_assert_equal",       &Self::bn254fr_assert_equal       },
             { "bn254fr_assert_equal_u32",   &Self::bn254fr_assert_equal_u32   },
             { "bn254fr_assert_equal_u64",   &Self::bn254fr_assert_equal_u64   },
@@ -889,12 +1014,11 @@ struct bn254fr_module : public host_module {
             { "bn254fr_assert_mul",         &Self::bn254fr_assert_mul         },
             { "bn254fr_assert_mulc",        &Self::bn254fr_assert_mulc        },
 
+            // Checked bit operations
             { "bn254fr_to_bits_checked",    &Self::bn254fr_to_bits_checked    },
             { "bn254fr_from_bits_checked",  &Self::bn254fr_from_bits_checked  },
 
-            { "bn254fr_to_bits_checked",    &Self::bn254fr_to_bits_checked    },
-            { "bn254fr_from_bits_checked",  &Self::bn254fr_from_bits_checked  },
-
+            // Arithmetic
             { "bn254fr_addmod",             &Self::bn254fr_addmod             },
             { "bn254fr_submod",             &Self::bn254fr_submod             },
             { "bn254fr_mulmod",             &Self::bn254fr_mulmod             },
@@ -905,6 +1029,7 @@ struct bn254fr_module : public host_module {
             { "bn254fr_idiv",               &Self::bn254fr_idiv               },
             { "bn254fr_irem",               &Self::bn254fr_irem               },
 
+            // Comparison
             { "bn254fr_eq",                 &Self::bn254fr_eq                 },
             { "bn254fr_lt",                 &Self::bn254fr_lt                 },
             { "bn254fr_lte",                &Self::bn254fr_lte                },
@@ -912,24 +1037,43 @@ struct bn254fr_module : public host_module {
             { "bn254fr_gte",                &Self::bn254fr_gte                },
             { "bn254fr_eqz",                &Self::bn254fr_eqz                },
 
+            // Logical
             { "bn254fr_land",               &Self::bn254fr_land               },
             { "bn254fr_lor",                &Self::bn254fr_lor                },
 
+            // Bitwise
             { "bn254fr_band",               &Self::bn254fr_band               },
             { "bn254fr_bor",                &Self::bn254fr_bor                },
             { "bn254fr_bxor",               &Self::bn254fr_bxor               },
             { "bn254fr_bnot",               &Self::bn254fr_bnot               },
 
+            // Unchecked bit operations
             { "bn254fr_to_bits",            &Self::bn254fr_to_bits            },
             { "bn254fr_from_bits",          &Self::bn254fr_from_bits          },
 
+            // Shift
             { "bn254fr_shrmod",             &Self::bn254fr_shrmod             },
             { "bn254fr_shlmod",             &Self::bn254fr_shlmod             },
 
+            // Bigint
             { "bn254fr_bigint_mul_checked_no_carry",
                 &Self::bn254fr_bigint_mul_checked_no_carry },
+            { "bn254fr_bigint_mul",
+                &Self::bn254fr_bigint_mul },
+            { "bn254fr_bigint_idiv",
+                &Self::bn254fr_bigint_idiv },
+            { "bn254fr_bigint_invmod",
+                &Self::bn254fr_bigint_invmod },
             { "bn254fr_bigint_convert_to_proper_representation",
                 &Self::bn254fr_bigint_convert_to_proper_representation },
+            { "bn254fr_bigint_convert_to_proper_representation_signed",
+                &Self::bn254fr_bigint_convert_to_proper_representation_signed },
+            { "bn254fr_bigint_convert_to_proper_representation_unsigned",
+                &Self::bn254fr_bigint_convert_to_proper_representation_unsigned },
+            { "bn254fr_bigint_convert_to_overflow_representation",
+                &Self::bn254fr_bigint_convert_to_overflow_representation },
+            { "bn254fr_bigint_print",
+                &Self::bn254fr_bigint_print },
         };
     }
 
@@ -946,124 +1090,158 @@ struct bn254fr_module : public host_module {
     }
 
 protected:
-    // Assert polynomial c is equal to multiplication of polynomials a and b.
-    // a_addr and b_addr should point to arrays of length `count`
-    // c_addr should point to array of length `2 * count - 1`
-    void bn254fr_assert_poly_mul(u32 c_addr, u32 a_addr, u32 b_addr, u32 count) {
-        auto rand = ctx_->backend().manager().acquire_mpz();
-        ctx_->backend().manager().generate_linear_random(*rand);
+    // Composes mpz value from big integer number represented as bn254fr array
+    mpz_class *compose_big_int(u32 addr, u32 count, u32 bits) {
+        auto sum = ctx_->backend().manager().acquire_mpz();
 
-        auto a_sum = ctx_->backend().acquire_witness();
-        auto b_sum = ctx_->backend().acquire_witness();
-        auto c_sum = ctx_->backend().acquire_witness();
+        // exp = 2^bits
+        auto exp = ctx_->backend().manager().acquire_mpz();
+        *exp = 1;
 
-        auto *a_0 = load_bn254(a_addr);
-        auto *b_0 = load_bn254(b_addr);
-        auto *c_0 = load_bn254(c_addr);
+        for (size_t i = 0; i < count; i++) {
+            auto *a_i = load_bn254(addr + i * sizeof(uint64_t));
+            *sum = *sum + *a_i->value_ptr() * *exp;
+            mpz_mul_2exp(exp->get_mpz_t(), exp->get_mpz_t(), bits);
+        }
 
-        *a_sum->value_ptr() = *a_0->value_ptr();
-        *b_sum->value_ptr() = *b_0->value_ptr();
-        *c_sum->value_ptr() = *c_0->value_ptr();
+        ctx_->backend().manager().recycle_mpz(exp);
 
+        return sum;
+    }
+
+    // Decomposes mpz value to big integer number represented as bn254fr array
+    void decompose_big_int(u32 addr, u32 count, mpz_class *x, u32 bits) {
+        auto curr_x = ctx_->backend().manager().acquire_mpz();
+        *curr_x = *x;
+
+        for (size_t i = 0; i < count; i++) {
+            auto *a_i = load_bn254(addr + i * sizeof(uint64_t));
+
+            mpz_fdiv_r_2exp(a_i->value_ptr()->get_mpz_t(),
+                            curr_x->get_mpz_t(),
+                            bits);
+            *curr_x >>= bits;
+        }
+
+        ctx_->backend().manager().recycle_mpz(curr_x);
+    }
+
+    // Decomposes mpz value to big integer in overflow representation
+    void decompose_big_int_overflow(u32 addr,
+                                    u32 count,
+                                    mpz_class *x,
+                                    u32 bits,
+                                    u32 overflow_bits) {
+        auto curr_x = ctx_->backend().manager().acquire_mpz();
+        *curr_x = *x;
+
+        for (size_t i = 0; i < count; i++) {
+            auto *x_i = load_bn254(addr + i * sizeof(uint64_t));
+
+            // x_i = curr_x % 2^overflow_bits
+            mpz_fdiv_r_2exp(x_i->value_ptr()->get_mpz_t(),
+                            curr_x->get_mpz_t(),
+                            overflow_bits);
+
+            // curr_x = (curr_x - x_i) >> bits
+            *curr_x = *curr_x - *x_i->value_ptr();
+            mpz_fdiv_q_2exp(curr_x->get_mpz_t(), curr_x->get_mpz_t(), bits);
+        }
+
+        ctx_->backend().manager().recycle_mpz(curr_x);
+    }
+
+    // Composes mpz value from big integer number represented as array of
+    // signed bn254fr limbs
+    mpz_class *compose_big_int_signed(u32 addr, u32 count, u32 bits) {
+        auto sum = ctx_->backend().manager().acquire_mpz();
+
+        // exp = 2^bits
+        auto exp = ctx_->backend().manager().acquire_mpz();
+        *exp = 1;
+
+        for (size_t i = 0; i < count; i++) {
+            auto *a_i = load_bn254(addr + i * sizeof(uint64_t));
+            if (*a_i->value_ptr() < Field::modulus_middle) {
+                *sum = *sum + *a_i->value_ptr() * *exp;
+            } else {
+                *sum = *sum - (Field::modulus - *a_i->value_ptr()) * *exp;
+            }
+
+            mpz_mul_2exp(exp->get_mpz_t(), exp->get_mpz_t(), bits);
+        }
+
+        ctx_->backend().manager().recycle_mpz(exp);
+
+        return sum;
+    }
+
+    /// Calculates value of polynomial at specified point
+    zkp::managed_witness calc_poly_val(u32 addr, mpz_class *x, u32 count) {
+        auto sum = ctx_->backend().acquire_witness();
+
+        // sum = a_0
+        auto *a_0 = load_bn254(addr);
+        *sum->value_ptr() = *a_0->value_ptr();
         a_0->set_witness_status(true);
-        b_0->set_witness_status(true);
-        c_0->set_witness_status(true);
+        ctx_->backend().manager().constrain_equal(*sum, *a_0);
 
-        ctx_->backend().manager().constrain_equal(*a_sum, *a_0);
-        ctx_->backend().manager().constrain_equal(*b_sum, *b_0);
-        ctx_->backend().manager().constrain_equal(*c_sum, *c_0);
-
-        auto rand_i = ctx_->backend().manager().acquire_mpz();
-        *rand_i = *rand;
+        auto x_i = ctx_->backend().manager().acquire_mpz();
+        *x_i = *x;
 
         for (size_t i = 1; i < count; i++) {
-            auto *a_i = load_bn254(a_addr + i * sizeof(uint64_t));
-            auto *b_i = load_bn254(b_addr + i * sizeof(uint64_t));
-            auto *c_i = load_bn254(c_addr + i * sizeof(uint64_t));
+            auto *a_i = load_bn254(addr + i * sizeof(uint64_t));
 
-            auto a_i_mul = ctx_->backend().acquire_witness();
-            auto b_i_mul = ctx_->backend().acquire_witness();
-            auto c_i_mul = ctx_->backend().acquire_witness();
-
-            Field::mulmod(*a_i_mul->value_ptr(), *a_i->value_ptr(), *rand_i);
-            Field::mulmod(*b_i_mul->value_ptr(), *b_i->value_ptr(), *rand_i);
-            Field::mulmod(*c_i_mul->value_ptr(), *c_i->value_ptr(), *rand_i);
-
+            // x_i_mul = a_i * x_i
+            auto x_i_mul = ctx_->backend().acquire_witness();
+            Field::mulmod(*x_i_mul->value_ptr(), *a_i->value_ptr(), *x_i);
             a_i->set_witness_status(true);
-            b_i->set_witness_status(true);
-            c_i->set_witness_status(true);
+            ctx_->backend().manager().constrain_quadratic_constant(*x_i_mul,
+                                                                   *a_i,
+                                                                   *x_i);
 
-            ctx_->backend().manager().constrain_quadratic_constant(*a_i_mul,
-                                                                    *a_i,
-                                                                    *rand_i);
-            ctx_->backend().manager().constrain_quadratic_constant(*b_i_mul,
-                                                                    *b_i,
-                                                                    *rand_i);
-            ctx_->backend().manager().constrain_quadratic_constant(*c_i_mul,
-                                                                    *c_i,
-                                                                    *rand_i);
+            // sum += x_i_mul
+            auto sum_tmp = ctx_->backend().acquire_witness();
+            Field::addmod(*sum_tmp->value_ptr(),
+                          *sum->value_ptr(),
+                          *x_i_mul->value_ptr());
+            ctx_->backend().manager().constrain_linear(*sum_tmp, *sum, *x_i_mul);
+            sum = sum_tmp;
 
-            auto a_sum_tmp = ctx_->backend().acquire_witness();
-            auto b_sum_tmp = ctx_->backend().acquire_witness();
-            auto c_sum_tmp = ctx_->backend().acquire_witness();
-
-            Field::addmod(*a_sum_tmp->value_ptr(),
-                            *a_sum->value_ptr(),
-                            *a_i_mul->value_ptr());
-            Field::addmod(*b_sum_tmp->value_ptr(),
-                            *b_sum->value_ptr(),
-                            *b_i_mul->value_ptr());
-            Field::addmod(*c_sum_tmp->value_ptr(),
-                            *c_sum->value_ptr(),
-                            *c_i_mul->value_ptr());
-
-            ctx_->backend().manager().constrain_linear(*a_sum_tmp,
-                                                        *a_sum,
-                                                        *a_i_mul);
-            ctx_->backend().manager().constrain_linear(*b_sum_tmp,
-                                                        *b_sum,
-                                                        *b_i_mul);
-            ctx_->backend().manager().constrain_linear(*c_sum_tmp,
-                                                        *c_sum,
-                                                        *c_i_mul);
-
-            a_sum = a_sum_tmp;
-            b_sum = b_sum_tmp;
-            c_sum = c_sum_tmp;
-
-            Field::mulmod(*rand_i, *rand_i, *rand);
+            // x_i = x_i * x
+            Field::mulmod(*x_i, *x_i, *x);
         }
 
-        for (size_t i = count; i < count * 2 - 1; i++) {
-            auto *c_i = load_bn254(c_addr + i * sizeof(uint64_t));
+        ctx_->backend().manager().recycle_mpz(x_i);
 
-            auto c_i_mul = ctx_->backend().acquire_witness();
-            Field::mulmod(*c_i_mul->value_ptr(), *c_i->value_ptr(), *rand_i);
-            c_i->set_witness_status(true);
+        return sum;
+    }
 
-            ctx_->backend().manager().constrain_quadratic_constant(*c_i_mul,
-                                                                    *c_i,
-                                                                    *rand_i);
+    // Asserts polynomial c is equal to multiplication of polynomials a and b.
+    // a_addr should point to array of length `a_count`
+    // a_addr should point to array of length `b_count`
+    // c_addr should point to array of length `a_count + b_count - 1`
+    void bn254fr_assert_poly_mul(u32 c_addr,
+                                 u32 a_addr,
+                                 u32 b_addr,
+                                 u32 a_count,
+                                 u32 b_count) {
+        auto x = ctx_->backend().manager().acquire_mpz();
 
-            auto c_sum_tmp = ctx_->backend().acquire_witness();
-            Field::addmod(*c_sum_tmp->value_ptr(),
-                            *c_sum->value_ptr(),
-                            *c_i_mul->value_ptr());;
-            ctx_->backend().manager().constrain_linear(*c_sum_tmp,
-                                                        *c_sum,
-                                                        *c_i_mul);
+        auto c_count = a_count + b_count - 1;
+        for (u32 i = 0; i <= c_count; ++i) {
+            *x = i;
 
-            c_sum = c_sum_tmp;
+            auto a_val = calc_poly_val(a_addr, x, a_count);
+            auto b_val = calc_poly_val(b_addr, x, b_count);
+            auto c_val = calc_poly_val(c_addr, x, c_count);
 
-            Field::mulmod(*rand_i, *rand_i, *rand);
+            ctx_->backend().manager().constrain_quadratic(c_val.get(),
+                                                          a_val.get(),
+                                                          b_val.get());
         }
 
-        ctx_->backend().manager().constrain_quadratic(c_sum.get(),
-                                                        a_sum.get(),
-                                                        b_sum.get());
-
-        ctx_->backend().manager().recycle_mpz(rand);
-        ctx_->backend().manager().recycle_mpz(rand_i);
+        ctx_->backend().manager().recycle_mpz(x);
     }
 
 

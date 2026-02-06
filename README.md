@@ -301,7 +301,7 @@ Navigate to the `build` directory to run the examples.
 Suppose we have `edit.wasm` either by compiling `/examples/edit_distance.cpp` or pick from `wasm/edit.wasm`. The arguments are `abcde` and `bcdef`, then:
 
 ```bash
-./webgpu_prover '{"program":"../sdk/build/examples/edit.wasm","shader-path":"../shader","packing":8192,"private-indices":[1],"args":[{"str":"abcdeabcdeabcde"},{"str":"bcdefabcdeabcde"},{"i64":15},{"i64":15}]}'
+./webgpu_prover '{"program":"../sdk/cpp/build/examples/edit.wasm","shader-path":"../shader","packing":8192,"private-indices":[1],"args":[{"str":"abcdeabcdeabcde"},{"str":"bcdefabcdeabcde"},{"i64":15},{"i64":15}]}'
 ```
 
 This will run the Edit Distance program with the given packing size and arguments and verify that the edit distance between the two input strings `abcde` and `bcdef` is less than 5. The last two arguments are the length of the two input strings. You can run this code with two strings of arbitrary lengths. If you try to generate a proof with strings whose edit distance >= 5, the verification will fail.
@@ -309,7 +309,7 @@ This will run the Edit Distance program with the given packing size and argument
 For verification "private" arguments can be "obscured" as long as their input type is still correct and the argument length is the same:
 
 ```bash
-./webgpu_verifier '{"program":"../sdk/build/examples/edit.wasm","shader-path":"../shader","packing":8192,"private-indices":[1],"args":[{"str":"xxxxxxxxxxxxxxx"},{"str":"bcdefabcdeabcde"},{"i64":15},{"i64":15}]}'
+./webgpu_verifier '{"program":"../sdk/cpp/build/examples/edit.wasm","shader-path":"../shader","packing":8192,"private-indices":[1],"args":[{"str":"xxxxxxxxxxxxxxx"},{"str":"bcdefabcdeabcde"},{"i64":15},{"i64":15}]}'
 ```
 
 ## Hardware Acceleration

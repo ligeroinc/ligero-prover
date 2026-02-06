@@ -10,6 +10,9 @@ set(CMAKE_EXECUTABLE_SUFFIX ".wasm")
 add_executable(bn254fr_test bn254fr_test.cpp)
 target_link_libraries(bn254fr_test ligetron)
 
+add_executable(bn254fr_bigint_test bn254fr_bigint_test.cpp)
+target_link_libraries(bn254fr_bigint_test ligetron)
+
 add_executable(uint256_test uint256_test.cpp)
 target_link_libraries(uint256_test ligetron)
 
@@ -18,3 +21,11 @@ target_link_libraries(uint256_cpp_test ligetron)
 
 add_executable(prime_field_uint256_test prime_field_uint256_test.cpp)
 target_link_libraries(prime_field_uint256_test ligetron)
+
+add_executable(p256_test p256_test.cpp)
+target_link_libraries(p256_test ligetron)
+target_link_options(p256_test PRIVATE "-sSTACK_SIZE=100000000")
+
+add_executable(ecdsa_p256_test ecdsa_p256_test.cpp)
+target_link_libraries(ecdsa_p256_test ligetron)
+target_link_options(ecdsa_p256_test PRIVATE "-sSTACK_SIZE=100000000")

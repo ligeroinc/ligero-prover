@@ -10,52 +10,19 @@ namespace webgpu {
 // Internal linkage helpers
 namespace {
 
-#if defined(__EMSCRIPTEN__)
-template <typename T>
-struct async_waiter {
-    T data;
-    bool done = false;
-};
-#endif
-
-#if defined(__EMSCRIPTEN__)
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
-    async_waiter<WGPUAdapter> waiter;
-    WGPURequestAdapterOptions options {
-        // Always request the most powerful GPU
-        .powerPreference = WGPUPowerPreference_HighPerformance
-    };
-
-    wgpuInstanceRequestAdapter(
-        instance,
-        &options,
-        [](WGPURequestAdapterStatus s, WGPUAdapter a, const char *msg, void *waiter) {
-            auto *w = reinterpret_cast<async_waiter<WGPUAdapter>*>(waiter);
-            if (s == WGPURequestAdapterStatus_Success) {
-                w->data = a;
-            }
-            else {
-                std::cout << "ERROR: Failed to request adapter: " << msg << std::endl;
-            }
-        
-            w->done = true;
-        }, (void*)&waiter);
-
-    while (!waiter.done) { emscripten_sleep(1); }
-
-    if (waiter.data == nullptr) {
-        exit(EXIT_FAILURE);
+// Helper to wait for a WebGPU future to complete
+// Uses blocking wait - emdawnwebgpu handles asyncify internally for web builds
+void waitForFuture(WGPUInstance instance, WGPUFuture future) {
+    WGPUFutureWaitInfo wait { .future = future };
+    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
+    if (status != WGPUWaitStatus_Success) {
+        LIGERO_LOG_ERROR << "wgpuInstanceWaitAny failed with status: " << static_cast<int>(status);
     }
+}
 
-    return waiter.data;
-}
-}
-#else
 WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
-    WGPUAdapter adapter;
-    
+    WGPUAdapter adapter = nullptr;
+
     WGPURequestAdapterOptions options {
         // Always request the most powerful GPU
         .powerPreference = WGPUPowerPreference_HighPerformance
@@ -80,84 +47,10 @@ WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
     };
 
     auto f = wgpuInstanceRequestAdapter(instance, &options, info);
-
-    WGPUFutureWaitInfo wait { .future = f };
-    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
-    if (status != WGPUWaitStatus_Success) {
-        std::cerr << "Error: " << "failed to request webgpu adapter: ";
-        switch (status) {
-            case WGPUWaitStatus_TimedOut:
-                std::cerr << "timeout" << std::endl;
-                break;
-            case WGPUWaitStatus_Error:
-                std::cerr << "unknown error" << std::endl;
-                break;
-            default: break;
-        }
-    }
+    waitForFuture(instance, f);
     return adapter;
 }
-#endif
 
-#if defined(__EMSCRIPTEN__)
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
-    async_waiter<WGPUDevice> waiter;
-
-    WGPUDeviceDescriptor desc {
-        .label = WGPU_STRING("LigetronWebGPU"),
-        .requiredFeatureCount = 0,
-        .requiredLimits = nullptr, // use default limits
-        .deviceLostCallback = [](WGPUDeviceLostReason reason, const char* msg, void*) {
-            std::string reason_str;
-            switch (reason) {
-            case WGPUDeviceLostReason_Unknown:
-                reason_str = "DeviceLostReason::Unknown";
-                break;
-            case WGPUDeviceLostReason_Destroyed:
-                // Normally exit, don't print error
-                return;
-            default:
-                reason_str = "DeviceLostReason::<Uncaptured>";
-            }
-            std::cout << std::format("Device Disconnected due to {}, {}",
-                                     reason_str,
-                                     msg);
-        },
-    };
-
-    wgpuAdapterRequestDevice(
-        adapter,
-        &desc,
-        [](WGPURequestDeviceStatus s, WGPUDevice d, const char *msg, void *data) {
-            auto *w = reinterpret_cast<async_waiter<WGPUDevice>*>(data);
-            if (s == WGPURequestDeviceStatus_Success) {
-                w->data = d;
-            }
-            else {
-                std::cout << "ERROR: Failed to request device: " << msg << std::endl;
-            }
-
-            w->done = true;
-        }, (void*)&waiter);
-
-    while (!waiter.done) { emscripten_sleep(1); }
-
-    if (waiter.data == nullptr) {
-        exit(EXIT_FAILURE);
-    }
-    
-    wgpuDeviceSetUncapturedErrorCallback(
-        waiter.data,
-        [](WGPUErrorType err, const char *msg, void *) {
-            std::cout << format_error(err, msg) << std::endl;
-        }, nullptr);
-
-    return waiter.data;
-}
-}
-#else
 WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
     WGPUDeviceLostCallbackInfo lost {
         .mode = WGPUCallbackMode_AllowProcessEvents,
@@ -170,11 +63,13 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
             case WGPUDeviceLostReason_Destroyed:
                 // Normally exit, don't print error
                 return;
+#if !defined(__EMSCRIPTEN__)
             case WGPUDeviceLostReason_CallbackCancelled:
                 reason_str = "DeviceLostReason::CallbackCancelled";
                 break;
             case WGPUDeviceLostReason_FailedCreation:
                 reason_str = "DeviceLostReason::FailedCreation"; break;
+#endif
             default:
                 reason_str = "DeviceLostReason::<Uncaptured>";
             }
@@ -190,10 +85,13 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
     WGPUUncapturedErrorCallbackInfo err {
         .callback = [](WGPUDevice const *, WGPUErrorType type, WGPUStringView msg, void* , void*) {
             LIGERO_LOG_ERROR << format_error(type, msg.data);
+#if !defined(__EMSCRIPTEN__)
             std::abort();
+#endif
         }
     };
 
+#if !defined(__EMSCRIPTEN__)
     WGPULimits limits = WGPU_LIMITS_INIT;
 
     bool success = wgpuAdapterGetLimits(adapter, &limits);
@@ -236,18 +134,27 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
         .disabledToggleCount = 1,
         .disabledToggles     = disabled_toggle_names
     };
-      
+
     WGPUDeviceDescriptor desc {
         .nextInChain                  = &toggles.chain,
-        .label                        = WGPU_STRING("LigetronWebGPU"),
+        .label                        = {"LigetronWebGPU", WGPU_STRLEN},
         .requiredFeatureCount         = 0,
         .requiredFeatures             = nullptr,
         .requiredLimits               = &limits,
         .deviceLostCallbackInfo       = lost,
         .uncapturedErrorCallbackInfo  = err
     };
+#else
+    WGPUDeviceDescriptor desc {
+        .label                        = {"LigetronWebGPU", WGPU_STRLEN},
+        .requiredFeatureCount         = 0,
+        .requiredLimits               = nullptr,
+        .deviceLostCallbackInfo       = lost,
+        .uncapturedErrorCallbackInfo  = err
+    };
+#endif
 
-    WGPUDevice device;
+    WGPUDevice device = nullptr;
     WGPURequestDeviceCallbackInfo info {
         .nextInChain = nullptr,
         .mode = WGPUCallbackMode_AllowProcessEvents,
@@ -266,47 +173,10 @@ WGPUDevice wgpuRequestDeviceSync(WGPUInstance instance, WGPUAdapter adapter) {
     };
 
     auto f = wgpuAdapterRequestDevice(adapter, &desc, info);
-    WGPUFutureWaitInfo wait { .future = f };
-    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
-    if (status != WGPUWaitStatus_Success) {
-        std::cerr << "Error: " << "failed to request webgpu device: ";
-        switch (status) {
-            case WGPUWaitStatus_TimedOut:
-                std::cerr << "timeout" << std::endl;
-                break;
-            case WGPUWaitStatus_Error:
-                std::cerr << "unknown error" << std::endl;
-                break;
-            default: break;
-        }
-    }
+    waitForFuture(instance, f);
     return device;
 }
-#endif
 
-#if defined(__EMSCRIPTEN__)
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset, size_t size) {
-    async_waiter<void*> waiter;
-
-    wgpuBufferMapAsync(
-        map_buf,
-        WGPUMapMode_Read,
-        offset,
-        size,
-        [](WGPUBufferMapAsyncStatus status, void *data) {
-            auto *w = reinterpret_cast<async_waiter<void*>*>(data);
-            if (status != WGPUBufferMapAsyncStatus_Success) {
-                std::cout << "Map Async failed with status: " << status << std::endl;
-            }
-            w->done = true;
-        }, (void*)&waiter);
-
-    while (!waiter.done) { emscripten_sleep(1); }
-}
-}
-#else
 void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset, size_t size) {
     WGPUBufferMapCallbackInfo info {
         .mode = WGPUCallbackMode_AllowProcessEvents,
@@ -316,12 +186,14 @@ void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset,
                 switch(status) {
                 case WGPUMapAsyncStatus_Success:
                     status_str = "[MapAsync::Success]: "; break;
+#if !defined(__EMSCRIPTEN__)
                 case WGPUMapAsyncStatus_CallbackCancelled:
                     status_str = "[MapAsync::CallbackCancelled]: "; break;
-                case WGPUMapAsyncStatus_Error:
-                    status_str = "[MapAsync::Error]: "; break;
                 case WGPUMapAsyncStatus_Aborted:
                     status_str = "[MapAsync::Aborted]: "; break;
+#endif
+                case WGPUMapAsyncStatus_Error:
+                    status_str = "[MapAsync::Error]: "; break;
                 default:
                     status_str = "[MapAsync::UncapturedError]: ";
                 }
@@ -329,56 +201,11 @@ void wgpuBufferMapSync(WGPUInstance instance, WGPUBuffer map_buf, size_t offset,
             }
         }
     };
-    
+
     auto f = wgpuBufferMapAsync(map_buf, WGPUMapMode_Read, offset, size, info);
-    WGPUFutureWaitInfo wait { .future = f };
-    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
-    if (status != WGPUWaitStatus_Success) {
-        std::cerr << "Error: " << "failed to map buffer: ";
-        switch (status) {
-            case WGPUWaitStatus_TimedOut:
-                std::cerr << "timeout" << std::endl;
-                break;
-            case WGPUWaitStatus_Error:
-                std::cerr << "unknown error" << std::endl;
-                break;
-            default: break;
-        }
-    }
+    waitForFuture(instance, f);
 }
-#endif
 
-#if defined(__EMSCRIPTEN__)
-extern "C" {
-EMSCRIPTEN_KEEPALIVE
-void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
-    bool ready = false;
-    
-    wgpuQueueOnSubmittedWorkDone(queue,
-        [](WGPUQueueWorkDoneStatus status, void *ud1) {
-            if (status != WGPUQueueWorkDoneStatus_Success) {
-                std::string status_str;
-                switch(status) {
-                case WGPUQueueWorkDoneStatus_Success:
-                    status_str = "Completed"; break;
-                case WGPUQueueWorkDoneStatus_Error:
-                    status_str = "Error"; break;
-                case WGPUQueueWorkDoneStatus_Unknown:
-                    status_str = "Unknown Error"; break;
-                case WGPUQueueWorkDoneStatus_DeviceLost:
-                    status_str = "Device Lost"; break;
-                default:
-                    status_str = "<Uncaptured>";
-                }
-                LIGERO_LOG_ERROR << std::format("Work failed with status: {}", status_str);
-            }
-            *reinterpret_cast<bool*>(ud1) = true;
-        }, &ready);
-
-    while (!ready) { emscripten_sleep(1); }
-}
-}
-#else
 void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
     WGPUQueueWorkDoneCallbackInfo info {
         .mode = WGPUCallbackMode_AllowProcessEvents,
@@ -388,8 +215,10 @@ void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
                 switch(status) {
                 case WGPUQueueWorkDoneStatus_Success:
                     status_str = "Completed"; break;
+#if !defined(__EMSCRIPTEN__)
                 case WGPUQueueWorkDoneStatus_CallbackCancelled:
                     status_str = "Callback cancelled"; break;
+#endif
                 case WGPUQueueWorkDoneStatus_Error:
                     status_str = "Error"; break;
                 default:
@@ -399,24 +228,10 @@ void wgpuDeviceSynchronize(WGPUInstance instance, WGPUQueue queue) {
             }
         }
     };
-    
+
     auto f = wgpuQueueOnSubmittedWorkDone(queue, info);
-    WGPUFutureWaitInfo wait { .future = f };
-    WGPUWaitStatus status = wgpuInstanceWaitAny(instance, 1, &wait, UINT64_MAX);
-    if (status != WGPUWaitStatus_Success) {
-        std::cerr << "Error: " << "failed to synchronize device: ";
-        switch (status) {
-            case WGPUWaitStatus_TimedOut:
-                std::cerr << "timeout" << std::endl;
-                break;
-            case WGPUWaitStatus_Error:
-                std::cerr << "unknown error" << std::endl;
-                break;
-            default: break;
-        }
-    }
+    waitForFuture(instance, f);
 }
-#endif
 
 }  // namespace
 
@@ -427,9 +242,6 @@ device_context::~device_context() {
 }
 
 void device_context::device_init() {
-#if defined(__EMSCRIPTEN__)
-    instance_ = wgpuCreateInstance(nullptr);
-#else
     WGPUInstanceFeatureName features[] = {
         WGPUInstanceFeatureName_TimedWaitAny
     };
@@ -447,7 +259,6 @@ void device_context::device_init() {
     };
 
     instance_ = wgpuCreateInstance(&desc);
-#endif
 
     if (!instance_) {
         throw std::runtime_error("Could not initialize WebGPU!");
@@ -465,17 +276,17 @@ void device_context::device_shutdown() {
         wgpuQueueRelease(queue_);
         queue_ = nullptr;
     }
-    
+
     if (device_) {
         wgpuDeviceRelease(device_);
         device_ = nullptr;
     }
-    
+
     if (adapter_) {
         wgpuAdapterRelease(adapter_);
         adapter_ = nullptr;
     }
-    
+
     if (instance_) {
         // Make sure the instance is aware of the release
         wgpuInstanceProcessEvents(instance_);
@@ -600,7 +411,3 @@ device_context::write_buffer_clear(buffer_view buf, const uint32_t *data, size_t
 
 }  // namespace webgpu
 }  // namespace ligero
-
-
-
-

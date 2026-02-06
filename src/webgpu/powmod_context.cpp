@@ -89,7 +89,7 @@ void powmod_context_base::init_layout() {
         };
 
         WGPUBindGroupLayoutDescriptor powmod_desc {
-            .label = "Bignum::powmod_buffer",
+            .label = {"Bignum::powmod_buffer", WGPU_STRLEN},
             .entryCount = 3,
             .entries = powmod_bindings,
         };
@@ -109,7 +109,7 @@ void powmod_context_base::init_layout() {
         };
 
         WGPUBindGroupLayoutDescriptor powmod_precomp_desc {
-            .label = WGPU_STRING("Bignum::powmod_precompute_layout"),
+            .label = {"Bignum::powmod_precompute_layout", WGPU_STRLEN},
             .entryCount = 1,
             .entries = powmod_precomp_bindings,
         };
@@ -138,14 +138,19 @@ void powmod_context_base::init_pipeline(WGPUShaderModule shader) {
             .layout = powmod_pipeline_layout,
             .compute {
                 .module = shader,
+                .entryPoint = {"EltwisePowMod", WGPU_STRLEN},
             }
         };
-
-        powmod_desc.compute.entryPoint = WGPU_STRING("EltwisePowMod");
         pipeline_powmod_ = wgpuDeviceCreateComputePipeline(device_->device(), &powmod_desc);
 
-        powmod_desc.compute.entryPoint = WGPU_STRING("EltwisePowAddMod");
-        pipeline_powmod_add_ = wgpuDeviceCreateComputePipeline(device_->device(), &powmod_desc);
+        WGPUComputePipelineDescriptor powmod_add_desc {
+            .layout = powmod_pipeline_layout,
+            .compute {
+                .module = shader,
+                .entryPoint = {"EltwisePowAddMod", WGPU_STRLEN},
+            }
+        };
+        pipeline_powmod_add_ = wgpuDeviceCreateComputePipeline(device_->device(), &powmod_add_desc);
     }
 
     wgpuPipelineLayoutRelease(powmod_pipeline_layout);
@@ -171,7 +176,7 @@ void powmod_context_base::release() {
 }
 
 void powmod_context_base::powmod_kernel(buffer_binding bind, size_t threads) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwisePowMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwisePowMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_->device(), &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
@@ -189,7 +194,7 @@ void powmod_context_base::powmod_kernel(buffer_binding bind, size_t threads) {
 }
 
 void powmod_context_base::powmod_add_kernel(buffer_binding bind, size_t threads) {
-    WGPUCommandEncoderDescriptor cmd { .label = WGPU_STRING("EltwisePowAddMod") };
+    WGPUCommandEncoderDescriptor cmd { .label = {"EltwisePowAddMod", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_->device(), &cmd);
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
