@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0](https://github.com/ligeroinc/ligetron/compare/v1.3.0...v1.4.0) (2026-02-09)
+
+
+### Features
+
+* **sdk:** add ecdsa variant taking pre-hashed message ([#285](https://github.com/ligeroinc/ligetron/issues/285)) ([d090105](https://github.com/ligeroinc/ligetron/commit/d0901050edf6f473df1445243ecf838635e0d8fd))
+
+
+### Bug Fixes
+
+* **sdk:** add edcsa verify prehash to build ([#287](https://github.com/ligeroinc/ligetron/issues/287)) ([b6f5a5c](https://github.com/ligeroinc/ligetron/commit/b6f5a5c2b29abbd6695f3848cf6e2c370e6020af))
+
 ## [1.3.0](https://github.com/ligeroinc/ligetron/compare/v1.2.0...v1.3.0) (2026-01-29)
 
 
