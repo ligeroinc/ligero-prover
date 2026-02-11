@@ -243,7 +243,7 @@ emrun --browser chrome webgpu_prover.html
 ---
 ### Build the C++ version of the SDK
 
-[Step by step instructions here](https://github.com/ligeroinc/ligetron/blob/main/sdk/cpp/README.md)
+[Step by step instructions here](sdk/cpp/README.md)
 
 From the project root
 ```bash
