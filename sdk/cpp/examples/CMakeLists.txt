@@ -55,3 +55,8 @@ target_link_options(ecdsa_p256_verify PRIVATE "-sSTACK_SIZE=100000000")
 add_executable(ecdsa_p256_verify_prehashed ECDSA/ecdsa_p256_verify_prehashed.cpp)
 target_link_libraries(ecdsa_p256_verify_prehashed ligetron)
 target_link_options(ecdsa_p256_verify_prehashed PRIVATE "-sSTACK_SIZE=100000000")
+
+add_executable(ecdsa_secp256k1_verify ECDSA/ecdsa_secp256k1_verify.cpp)
+target_link_libraries(ecdsa_secp256k1_verify ligetron)
+target_link_options(ecdsa_secp256k1_verify PRIVATE "-sSTACK_SIZE=100000000")
+

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-2025 Ligero, Inc.
+ * Copyright (C) 2023-2026 Ligero, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -193,6 +193,11 @@ struct field_element {
         field_element res;
         mux(res, cond, a, b);
         return res;
+    }
+
+    static bool eq(const field_element& a, const field_element& b)
+    requires HasEq<Policy> {
+        return Policy::eq(a.data_, b.data_);
     }
 
     static void eqz(Policy::boolean_type& out, const field_element& a)

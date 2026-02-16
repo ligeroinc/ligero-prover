@@ -324,4 +324,4 @@ google-chrome --enable-unsafe-webgpu --enable-features=Vulkan
 
 ------
 
-Copyright (C) 2023-2025 Ligero, Inc
+Copyright (C) 2023-2026 Ligero, Inc

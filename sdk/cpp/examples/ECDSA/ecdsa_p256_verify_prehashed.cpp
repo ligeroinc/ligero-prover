@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-2025 Ligero, Inc.
+ * Copyright (C) 2023-2026 Ligero, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,8 @@ int main(int argc, char *argv[]) {
     pubkey_y.import_bytes_big({pubkey + 32, 32});
     ec::p256_curve::point pub_key{pubkey_x, pubkey_y};
 
-    ecdsa_verify<ec::p256_curve>(std::span<const unsigned char>(msg_hash, 32), r, s, pub_key);
+    auto res = ecdsa_verify<ec::p256_curve>(std::span<const unsigned char>(msg_hash, 32), r, s, pub_key);
+    assert_one(res);
 
     return 0;
 }

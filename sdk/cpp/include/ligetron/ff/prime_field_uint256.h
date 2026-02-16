@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-2025 Ligero, Inc.
+ * Copyright (C) 2023-2026 Ligero, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -300,6 +300,16 @@ public:
         }
     }
 
+    static bool eq(const prime_field_uint256_storage &x,
+                   const prime_field_uint256_storage &y) {
+        x.reduce();
+        y.reduce();
+        bn254fr_class res = bn254fr_bigint::eq(x.value_, y.value_);
+        auto u64_res = res.get_u64();
+        bn254fr_assert_equal_u64(res.data(), u64_res);
+        return u64_res == 1;
+    }
+
     void eqz(bn254fr_class &out) const {
         out = value_.eqz();
     }
@@ -578,6 +588,10 @@ struct prime_field_uint256 {
                     const storage_type &a,
                     const storage_type &b) {
         prime_field_uint256_storage<Derived>::mux(res, cond, a, b);
+    }
+
+    static bool eq(const storage_type &x, const storage_type &y) {
+        return storage_type::eq(x, y);
     }
 
     static void eqz(boolean_type &res, const storage_type &a) {

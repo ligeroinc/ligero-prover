@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-2025 Ligero, Inc.
+ * Copyright (C) 2023-2026 Ligero, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -142,6 +142,12 @@ concept HasMux = HasBoolean<F> &&
                           const typename F::storage_type& a,
                           const typename F::storage_type& b) {
     F::mux(out, c, a, b);
+};
+
+template <typename F>
+concept HasEq = requires(const typename F::storage_type& a,
+                         const typename F::storage_type& b) {
+    { F::eq(a, b) } -> std::convertible_to<bool>;
 };
 
 template <typename F>
