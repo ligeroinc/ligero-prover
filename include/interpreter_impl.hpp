@@ -19,7 +19,21 @@
 #include <runtime.hpp>
 #include <opcode.hpp>
 
+#include <bit>
+#include <cmath>
+#include <limits>
+
 namespace ligero::vm {
+
+namespace {
+// Floating-point bounds for integer truncation range checks.
+// These are the exact power-of-two boundaries beyond which a float/double
+// cannot be safely converted to the corresponding integer type.
+constexpr double kI32Range  = 2147483648.0;            // 2^31
+constexpr double kU32Range  = 4294967296.0;             // 2^32
+constexpr double kI64Range  = 9223372036854775808.0;    // 2^63
+constexpr double kU64Range  = 18446744073709551616.0;   // 2^64
+} // namespace
 
 void undefined(opcode code) {
     std::cout << "Undefined instruction: " << opcode::to_string(code.tag) << std::endl;
@@ -1284,259 +1298,515 @@ struct opcode_interpreter {
     // ------------------------------------------------------------
 
     exec_result exec_fnn_const(opcode ins) {
-        undefined(ins);
+        auto [type, k] = decode_constop(ins);
+
+        if (type == value_kind::f32) {
+            float v = std::bit_cast<float>(static_cast<u32>(k));
+            ctx_.stack_push(v);
+        } else {
+            assert(type == value_kind::f64);
+            double v = std::bit_cast<double>(k);
+            ctx_.stack_push(v);
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_eq(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(static_cast<u32>(sx.as_f32() == sy.as_f32()));
+        } else {
+            ctx_.stack_push(static_cast<u32>(sx.as_f64() == sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_ne(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(static_cast<u32>(sx.as_f32() != sy.as_f32()));
+        } else {
+            ctx_.stack_push(static_cast<u32>(sx.as_f64() != sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_lt(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(static_cast<u32>(sx.as_f32() < sy.as_f32()));
+        } else {
+            ctx_.stack_push(static_cast<u32>(sx.as_f64() < sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_gt(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(static_cast<u32>(sx.as_f32() > sy.as_f32()));
+        } else {
+            ctx_.stack_push(static_cast<u32>(sx.as_f64() > sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_le(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(static_cast<u32>(sx.as_f32() <= sy.as_f32()));
+        } else {
+            ctx_.stack_push(static_cast<u32>(sx.as_f64() <= sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_ge(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(static_cast<u32>(sx.as_f32() >= sy.as_f32()));
+        } else {
+            ctx_.stack_push(static_cast<u32>(sx.as_f64() >= sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_abs(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::fabs(sx.as_f32()));
+        } else {
+            ctx_.stack_push(std::fabs(sx.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_neg(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(-sx.as_f32());
+        } else {
+            ctx_.stack_push(-sx.as_f64());
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_ceil(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::ceil(sx.as_f32()));
+        } else {
+            ctx_.stack_push(std::ceil(sx.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_floor(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::floor(sx.as_f32()));
+        } else {
+            ctx_.stack_push(std::floor(sx.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_trunc(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::trunc(sx.as_f32()));
+        } else {
+            ctx_.stack_push(std::trunc(sx.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_nearest(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::nearbyint(sx.as_f32()));
+        } else {
+            ctx_.stack_push(std::nearbyint(sx.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_sqrt(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::sqrt(sx.as_f32()));
+        } else {
+            ctx_.stack_push(std::sqrt(sx.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_add(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(sx.as_f32() + sy.as_f32());
+        } else {
+            ctx_.stack_push(sx.as_f64() + sy.as_f64());
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_sub(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(sx.as_f32() - sy.as_f32());
+        } else {
+            ctx_.stack_push(sx.as_f64() - sy.as_f64());
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_mul(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(sx.as_f32() * sy.as_f32());
+        } else {
+            ctx_.stack_push(sx.as_f64() * sy.as_f64());
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_div(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(sx.as_f32() / sy.as_f32());
+        } else {
+            ctx_.stack_push(sx.as_f64() / sy.as_f64());
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_min(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            float x = sx.as_f32(), y = sy.as_f32();
+            if (std::isnan(x) || std::isnan(y))
+                ctx_.stack_push(std::numeric_limits<float>::quiet_NaN());
+            else
+                ctx_.stack_push(std::fmin(x, y));
+        } else {
+            double x = sx.as_f64(), y = sy.as_f64();
+            if (std::isnan(x) || std::isnan(y))
+                ctx_.stack_push(std::numeric_limits<double>::quiet_NaN());
+            else
+                ctx_.stack_push(std::fmin(x, y));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_max(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            float x = sx.as_f32(), y = sy.as_f32();
+            if (std::isnan(x) || std::isnan(y))
+                ctx_.stack_push(std::numeric_limits<float>::quiet_NaN());
+            else
+                ctx_.stack_push(std::fmax(x, y));
+        } else {
+            double x = sx.as_f64(), y = sy.as_f64();
+            if (std::isnan(x) || std::isnan(y))
+                ctx_.stack_push(std::numeric_limits<double>::quiet_NaN());
+            else
+                ctx_.stack_push(std::fmax(x, y));
+        }
         return exec_ok();
     }
 
     exec_result exec_fnn_copysign(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        auto sy = ctx_.stack_pop();
+        auto sx = ctx_.stack_pop();
+        if (type == value_kind::f32) {
+            ctx_.stack_push(std::copysign(sx.as_f32(), sy.as_f32()));
+        } else {
+            ctx_.stack_push(std::copysign(sx.as_f64(), sy.as_f64()));
+        }
         return exec_ok();
     }
 
     exec_result exec_f32_convert_i32_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<float>(static_cast<int32_t>(sx.as_u32())));
         return exec_ok();
     }
 
     exec_result exec_f32_convert_i32_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<float>(sx.as_u32()));
         return exec_ok();
     }
 
     exec_result exec_f32_convert_i64_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<float>(static_cast<int64_t>(sx.as_u64())));
         return exec_ok();
     }
 
     exec_result exec_f32_convert_i64_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<float>(sx.as_u64()));
         return exec_ok();
     }
 
     exec_result exec_f32_demote_f64(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<float>(sx.as_f64()));
         return exec_ok();
     }
 
     exec_result exec_f64_convert_i32_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<double>(static_cast<int32_t>(sx.as_u32())));
         return exec_ok();
     }
 
     exec_result exec_f64_convert_i32_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<double>(sx.as_u32()));
         return exec_ok();
     }
 
     exec_result exec_f64_convert_i64_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<double>(static_cast<int64_t>(sx.as_u64())));
         return exec_ok();
     }
 
     exec_result exec_f64_convert_i64_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<double>(sx.as_u64()));
         return exec_ok();
     }
 
     exec_result exec_f64_promote_f32(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(static_cast<double>(sx.as_f32()));
         return exec_ok();
     }
 
     exec_result exec_i32_reinterpret_f32(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(std::bit_cast<u32>(sx.as_f32()));
         return exec_ok();
     }
 
     exec_result exec_i64_reinterpret_f64(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(std::bit_cast<u64>(sx.as_f64()));
         return exec_ok();
     }
 
     exec_result exec_f32_reinterpret_i32(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(std::bit_cast<float>(sx.as_u32()));
         return exec_ok();
     }
 
     exec_result exec_f64_reinterpret_i64(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        ctx_.stack_push(std::bit_cast<double>(sx.as_u64()));
         return exec_ok();
     }
 
 
     exec_result exec_i32_trunc_f32_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        if (std::isnan(v) || v >= kI32Range || v < -kI32Range)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u32>(static_cast<int32_t>(std::trunc(v))));
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_f32_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        if (std::isnan(v) || v >= kU32Range || v <= -1.0f)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u32>(std::trunc(v)));
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_f64_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        if (std::isnan(v) || v >= kI32Range || v < -kI32Range)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u32>(static_cast<int32_t>(std::trunc(v))));
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_f64_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        if (std::isnan(v) || v >= kU32Range || v <= -1.0)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u32>(std::trunc(v)));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_f32_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        if (std::isnan(v) || v >= kI64Range || v < -kI64Range)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u64>(static_cast<int64_t>(std::trunc(v))));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_f32_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        if (std::isnan(v) || v >= kU64Range || v <= -1.0f)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u64>(std::trunc(v)));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_f64_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        if (std::isnan(v) || v >= kI64Range || v < -kI64Range)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u64>(static_cast<int64_t>(std::trunc(v))));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_f64_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        if (std::isnan(v) || v >= kU64Range || v <= -1.0)
+            throw wasm_trap("integer overflow");
+        ctx_.stack_push(static_cast<u64>(std::trunc(v)));
         return exec_ok();
     }
 
 
     exec_result exec_i32_trunc_sat_f32_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        int32_t r;
+        if (std::isnan(v)) r = 0;
+        else if (v >= kI32Range) r = std::numeric_limits<int32_t>::max();
+        else if (v < -kI32Range) r = std::numeric_limits<int32_t>::min();
+        else r = static_cast<int32_t>(std::trunc(v));
+        ctx_.stack_push(static_cast<u32>(r));
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_sat_f32_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        u32 r;
+        if (std::isnan(v) || v <= -1.0f) r = 0;
+        else if (v >= kU32Range) r = std::numeric_limits<u32>::max();
+        else r = static_cast<u32>(std::trunc(v));
+        ctx_.stack_push(r);
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_sat_f64_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        int32_t r;
+        if (std::isnan(v)) r = 0;
+        else if (v >= kI32Range) r = std::numeric_limits<int32_t>::max();
+        else if (v < -kI32Range) r = std::numeric_limits<int32_t>::min();
+        else r = static_cast<int32_t>(std::trunc(v));
+        ctx_.stack_push(static_cast<u32>(r));
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_sat_f64_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        u32 r;
+        if (std::isnan(v) || v <= -1.0) r = 0;
+        else if (v >= kU32Range) r = std::numeric_limits<u32>::max();
+        else r = static_cast<u32>(std::trunc(v));
+        ctx_.stack_push(r);
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_sat_f32_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        int64_t r;
+        if (std::isnan(v)) r = 0;
+        else if (v >= kI64Range) r = std::numeric_limits<int64_t>::max();
+        else if (v < -kI64Range) r = std::numeric_limits<int64_t>::min();
+        else r = static_cast<int64_t>(std::trunc(v));
+        ctx_.stack_push(static_cast<u64>(r));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_sat_f32_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        float v = sx.as_f32();
+        u64 r;
+        if (std::isnan(v) || v <= -1.0f) r = 0;
+        else if (v >= kU64Range) r = std::numeric_limits<u64>::max();
+        else r = static_cast<u64>(std::trunc(v));
+        ctx_.stack_push(r);
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_sat_f64_s(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        int64_t r;
+        if (std::isnan(v)) r = 0;
+        else if (v >= kI64Range) r = std::numeric_limits<int64_t>::max();
+        else if (v < -kI64Range) r = std::numeric_limits<int64_t>::min();
+        else r = static_cast<int64_t>(std::trunc(v));
+        ctx_.stack_push(static_cast<u64>(r));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_sat_f64_u(opcode ins) {
-        undefined(ins);
+        auto sx = ctx_.stack_pop();
+        double v = sx.as_f64();
+        u64 r;
+        if (std::isnan(v) || v <= -1.0) r = 0;
+        else if (v >= kU64Range) r = std::numeric_limits<u64>::max();
+        else r = static_cast<u64>(std::trunc(v));
+        ctx_.stack_push(r);
         return exec_ok();
     }
 
@@ -1935,7 +2205,13 @@ struct opcode_interpreter {
     }
 
     exec_result exec_fnn_load(opcode ins) {
-        undefined(ins);
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        if (type == value_kind::f32) {
+            do_load<float, float>(offset);
+        } else {
+            assert(type == value_kind::f64);
+            do_load<double, double>(offset);
+        }
         return exec_ok();
     }
 
@@ -2027,6 +2303,14 @@ struct opcode_interpreter {
             u64 num = ctx_.make_numeric(std::move(tmp)).as_u64();
             c = static_cast<To>(num);
         }
+        else if constexpr (std::is_same_v<From, float>) {
+            float num = ctx_.make_numeric(std::move(tmp)).as_f32();
+            c = num;
+        }
+        else if constexpr (std::is_same_v<From, double>) {
+            double num = ctx_.make_numeric(std::move(tmp)).as_f64();
+            c = num;
+        }
         else {
             static_assert(false, "Unexpected conversion type");
         }
@@ -2049,8 +2333,13 @@ struct opcode_interpreter {
     }
 
     exec_result exec_fnn_store(opcode ins) {
-        undefined(ins);
-        return exec_ok();
+        auto [type, sign, align, offset] = decode_opcode(ins);
+        if (type == value_kind::f32) {
+            return do_store<float, float>(offset);
+        } else {
+            assert(type == value_kind::f64);
+            return do_store<double, double>(offset);
+        }
     }
 
     exec_result exec_inn_store8(opcode ins) {

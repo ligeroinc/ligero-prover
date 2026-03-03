@@ -4,17 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0](https://github.com/ligeroinc/ligetron/compare/v1.3.1...v1.4.0) (2026-03-03)
+
+
+### Features
+
+* implement public path for all f32/f64 floating-point instructions ([#298](https://github.com/ligeroinc/ligetron/issues/298)) ([7ce75d3](https://github.com/ligeroinc/ligetron/commit/7ce75d345d93ade2e541433df3330713335ea76f))
+
+
+### Bug Fixes
+
+* resolve 32-bit WASM vs 64-bit native divergence bugs ([#312](https://github.com/ligeroinc/ligetron/issues/312)) ([fa774a2](https://github.com/ligeroinc/ligetron/commit/fa774a230b502c8be06f5cd8bef94f223eb49599))
+* **sdk:** fix bug in eq implementation for uint256 field ([#307](https://github.com/ligeroinc/ligetron/issues/307)) ([3d6ef0c](https://github.com/ligeroinc/ligetron/commit/3d6ef0ca0bf550a70a5e657297346b8c0f99e0c3))
+
 ## [1.3.1](https://github.com/ligeroinc/ligetron/compare/v1.3.0...v1.3.1) (2026-02-16)
 
 
 ### Features
 
-* **sdk:** add ecdsa variant taking pre-hashed message ([#285](https://github.com/ligeroinc/ligetron/issues/285)) ([d090105](https://github.com/ligeroinc/ligetron/commit/d0901050edf6f473df1445243ecf838635e0d8fd))
+* **sdk:** secp256k1 ECDSA implementation ([8eadb12](https://github.com/ligeroinc/ligetron/commit/8eadb1234f0db6f5e0b77f57dae5bdd8d2ea1a68))
+* **sdk:** add pre-hashed message variant to ecdsa_verify ([#285](https://github.com/ligeroinc/ligetron/issues/285)) ([d090105](https://github.com/ligeroinc/ligetron/commit/d0901050edf6f473df1445243ecf838635e0d8fd)), ([14c62b8](https://github.com/ligeroinc/ligetron/commit/14c62b8))
 
 
 ### Bug Fixes
 
-* **sdk:** add edcsa verify prehash to build ([#287](https://github.com/ligeroinc/ligetron/issues/287)) ([b6f5a5c](https://github.com/ligeroinc/ligetron/commit/b6f5a5c2b29abbd6695f3848cf6e2c370e6020af))
+* **sdk:** fix ecdsa verify prehash build ([#287](https://github.com/ligeroinc/ligetron/issues/287)) ([b6f5a5c](https://github.com/ligeroinc/ligetron/commit/b6f5a5c2b29abbd6695f3848cf6e2c370e6020af))
 
 ## [1.3.0](https://github.com/ligeroinc/ligetron/compare/v1.2.0...v1.3.0) (2026-01-29)
 

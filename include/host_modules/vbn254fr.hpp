@@ -339,10 +339,10 @@ struct vbn254fr_module : public host_module {
 
         u32 *out = reinterpret_cast<u32*>(mem + out_addr);
 
-        std::memset(out, 0, Context::field_type::num_u32_limbs);
+        std::memset(out, 0, Context::field_type::num_u32_limbs * sizeof(u32));
 
-        // Use platform-native word size for best performance
-        mpz_export(out, nullptr, -1, sizeof(void*), 0, 0, m.get_mpz_t());
+        // Use fixed u32 word size for deterministic cross-platform layout
+        mpz_export(out, nullptr, -1, sizeof(u32), 0, 0, m.get_mpz_t());
 
         ctx_->stack_push(err);
     }

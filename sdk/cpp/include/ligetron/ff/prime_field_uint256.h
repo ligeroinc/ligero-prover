@@ -305,7 +305,7 @@ public:
         x.reduce();
         y.reduce();
         bn254fr_class res = bn254fr_bigint::eq(x.value_, y.value_);
-        auto u64_res = res.get_u64();
+        auto u64_res = witness_cast_u64(res.get_u64());
         bn254fr_assert_equal_u64(res.data(), u64_res);
         return u64_res == 1;
     }

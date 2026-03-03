@@ -27,9 +27,11 @@ struct uint256_module : public host_module {
     uint256_module(Context *ctx) : ctx_(ctx) {}
 
     zkp::lazy_witness* load_bn254(u32 bn254_addr) {
-        uintptr_t ptr = ctx_->template memory_load<uintptr_t>(bn254_addr);
-        zkp::lazy_witness* ret = std::bit_cast<zkp::lazy_witness*>(ptr);
-        return ret;
+        // Always read 8 bytes to match the guest's uint64_t __handle field,
+        // regardless of host pointer width (4 on WASM, 8 on native).
+        uint64_t val = ctx_->template memory_load<uint64_t>(bn254_addr);
+        uintptr_t ptr = static_cast<uintptr_t>(val);
+        return std::bit_cast<zkp::lazy_witness*>(ptr);
     }
 
     uint256_data load_uint256(u32 uint256_addr) {

@@ -37,18 +37,19 @@ struct bn254fr_module : public host_module {
     bn254fr_module(Context *ctx) : ctx_(ctx) { }
 
     zkp::lazy_witness* load_bn254(u32 bn254_addr) {
-        uintptr_t ptr = ctx_->template memory_load<uintptr_t>(bn254_addr);
-        zkp::lazy_witness* ret = std::bit_cast<zkp::lazy_witness*>(ptr);
-        return ret;
+        // Always read 8 bytes to match the guest's uint64_t __handle field,
+        // regardless of host pointer width (4 on WASM, 8 on native).
+        uint64_t val = ctx_->template memory_load<uint64_t>(bn254_addr);
+        uintptr_t ptr = static_cast<uintptr_t>(val);
+        return std::bit_cast<zkp::lazy_witness*>(ptr);
     }
 
     void store_bn254(u32 bn254_addr, zkp::lazy_witness *ptr) {
-        uintptr_t val = std::bit_cast<uintptr_t>(ptr);
-        ctx_->memory_store(bn254_addr, val);
-
-        // The BN254 handle we store here is public,
-        // Ensure the written range is not marked secret.
-        ctx_->memory().unmark_closed(bn254_addr, bn254_addr + sizeof(val));
+        // Always write 8 bytes to match the guest's uint64_t __handle field.
+        // On WASM (32-bit), the pointer is zero-extended to 64 bits.
+        uint64_t val = static_cast<uint64_t>(std::bit_cast<uintptr_t>(ptr));
+        ctx_->template memory_store<uint64_t>(bn254_addr, val);
+        ctx_->memory().unmark_closed(bn254_addr, bn254_addr + sizeof(uint64_t));
     }
 
     void bn254fr_alloc() {

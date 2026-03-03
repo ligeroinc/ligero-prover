@@ -31,8 +31,11 @@ mpz_assign(mpz_class& out, T value) {
             out = static_cast<long>(value);
         } else {
             int64_t tmp = value;
-            mpz_import(out.get_mpz_t(), 1, -1, sizeof(tmp), 0, 0, &tmp);
-            if (tmp < 0)
+            bool neg = (tmp < 0);
+            uint64_t abs_val = neg ? (~static_cast<uint64_t>(tmp) + 1u)
+                                   : static_cast<uint64_t>(tmp);
+            mpz_import(out.get_mpz_t(), 1, -1, sizeof(abs_val), 0, 0, &abs_val);
+            if (neg)
                 mpz_neg(out.get_mpz_t(), out.get_mpz_t());
         }
     } else {
