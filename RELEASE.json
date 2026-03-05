@@ -1,6 +1,6 @@
 {
   "version": "v1.4.0",
-  "release_date": "2026-03-03",
+  "release_date": "2026-03-05",
   "private_commit_sha": "462b4c8bd7b735bfd679fba4baa97f15a23efbe1",
   "public_repo": "ligeroinc/ligero-prover",
   "source": "Publish Public Release (reusable/manual)",
