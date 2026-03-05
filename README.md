@@ -12,6 +12,8 @@
 [![X](https://img.shields.io/badge/@ligero__inc-000000?logo=x&logoColor=white)](https://x.com/ligero_inc)
 [![Telegram](https://img.shields.io/badge/Join_Telegram-2CA5E0?logo=telegram&logoColor=white)](https://t.me/+4wP_vBTuoKwyYzgx)
 
+This project integrates with the Midnight Network.
+
 # Downloading and Building Ligetron
 
 This README will guide you through the process of downloading and building Ligetron.
