@@ -15,7 +15,7 @@ std::shared_ptr<WGPUBindGroup> make_binding(WGPUBindGroup bg) {
 
 namespace ligero::webgpu {
 
-buffer_binding::buffer_binding() { }
+buffer_binding::buffer_binding() = default;
 
 buffer_binding::buffer_binding(buffer_binding::bindgroup_type bg)
     : buffer_binding(bg, {}) { }
