@@ -266,7 +266,7 @@ cargo build --target wasm32-wasip1 --release
 
 ## Running the Prover/Verifier
 
-To run the the prover follow these steps:
+To run the prover follow these steps:
 
 ### prover
 * Navigate to the build directory and run the following command to run the prover:
