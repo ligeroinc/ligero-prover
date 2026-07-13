@@ -322,6 +322,8 @@ __bn254fr* bn254fr_class::clear_data() {
     return data_;
 }
 
+__bn254fr* bn254fr_class::data() { return data_; }
+
 const __bn254fr* bn254fr_class::data() const { return data_; }
 
 bn254fr_class& bn254fr_class::operator=(const bn254fr_t o) {

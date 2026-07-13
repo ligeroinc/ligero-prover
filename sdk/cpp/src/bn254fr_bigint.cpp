@@ -91,7 +91,7 @@ bn254fr_bigint{n_limbs} {
     bn254fr_set_u64(limbs_[0], val);
 }
 
-bn254fr_bigint::bn254fr_bigint(bn254fr_t *limbs, uint32_t n_limbs,
+bn254fr_bigint::bn254fr_bigint(const bn254fr_t *limbs, uint32_t n_limbs,
                                uint32_t n_bits, bool is_unsign):
 limbs_count_{n_limbs}, bits_count_{n_bits}, is_unsigned_{is_unsign} {
     alloc(n_limbs);
@@ -434,6 +434,59 @@ bn254fr_bigint bn254fr_bigint::to_overflow(uint32_t n_limbs,
                                                       base_bits_count,
                                                       n_bits);
     return res;
+}
+
+void bn254fr_bigint::set_bytes_little(const unsigned char *bytes, uint32_t sz) {
+    constexpr auto limb_bytes = base_bits_count / 8;
+
+    uint32_t n_limbs = (sz + limb_bytes - 1) / limb_bytes;
+    realloc(n_limbs);
+
+    uint32_t n_full = sz / limb_bytes;
+    for (uint32_t i = 0; i < n_full; ++i) {
+        bn254fr_set_bytes_checked(limbs_[i],
+                                  bytes + i * limb_bytes,
+                                  limb_bytes,
+                                  -1);
+    }
+
+    uint32_t rem = sz % limb_bytes;
+    if (rem != 0) {
+        bn254fr_set_bytes_checked(limbs_[n_full],
+                                  bytes + n_full * limb_bytes,
+                                  rem,
+                                  -1);
+    }
+
+    bits_count_ = base_bits_count;
+    is_unsigned_ = true;
+}
+
+void bn254fr_bigint::set_bytes_big(const unsigned char *bytes, uint32_t sz) {
+    constexpr auto limb_bytes = base_bits_count / 8;
+
+    uint32_t n_limbs = (sz + limb_bytes - 1) / limb_bytes;
+    realloc(n_limbs);
+
+    uint32_t n_full = sz / limb_bytes;
+    uint32_t rem = sz % limb_bytes;
+
+    if (rem != 0) {
+        bn254fr_set_bytes_checked(limbs_[n_limbs - 1],
+                                  bytes,
+                                  rem,
+                                  1);
+    }
+
+    for (uint32_t i = 0; i < n_full; ++i) {
+        bn254fr_set_bytes_checked(limbs_[n_limbs - i - 1],
+                                  bytes + rem + i * limb_bytes,
+                                  limb_bytes,
+                                  1);
+    }
+
+    bits_count_ = base_bits_count;
+    is_unsigned_ = true;
 }
 
 bn254fr_bigint bn254fr_bigint::max(uint32_t n_limbs, uint32_t n_bits) {

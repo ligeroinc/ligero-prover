@@ -21,24 +21,24 @@
 #include <sstream>
 #include <unordered_set>
 
-#include <transpiler.hpp>
 #include <invoke.hpp>
 #include <runtime.hpp>
+#include <transpiler.hpp>
 #include <wgpu.hpp>
 
+#include <interpreter.hpp>
 #include <util/portable_sample.hpp>
-#include <util/boost/portable_binary_iarchive.hpp>
 #include <zkp/common.hpp>
 #include <zkp/finite_field_gmp.hpp>
 #include <zkp/nonbatch_context.hpp>
-#include <interpreter.hpp>
+#include <zkp/proof_serializer.hpp>
 
 #include <boost/algorithm/hex.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <nlohmann/json.hpp>
 #include <wabt/error-formatter.h>
 #include <wabt/wast-parser.h>
-#include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 
@@ -48,9 +48,9 @@ using namespace ligero::vm;
 namespace io = boost::iostreams;
 namespace fs = std::filesystem;
 
-using field_t = zkp::bn254_gmp;
+using field_t    = zkp::bn254_gmp;
 using executor_t = webgpu_context;
-using buffer_t = typename executor_t::buffer_type;
+using buffer_t   = typename executor_t::buffer_type;
 
 constexpr bool enable_RAM = false;
 
@@ -63,7 +63,7 @@ int main(int argc, const char *argv[]) {
                     LIGETRON_GIT_BRANCH,
                     LIGETRON_GIT_COMMIT_HASH);
     std::cout << ligero_version_string << std::endl;
-    
+
     std::vector<std::vector<u8>> input_args;
     std::string shader_path;
     std::string proof_name = "proof_data.gz";
@@ -72,14 +72,13 @@ int main(int argc, const char *argv[]) {
         std::cerr << "Error: No JSON input provided" << std::endl;
         exit(EXIT_FAILURE);
     }
-    
+
     std::string_view jstr = argv[1];
     json jconfig;
 
     try {
         jconfig = json::parse(jstr);
-    }
-    catch (json::exception& e) {
+    } catch (json::exception& e) {
         std::cerr << e.what() << std::endl;
         exit(EXIT_FAILURE);
     }
@@ -87,14 +86,15 @@ int main(int argc, const char *argv[]) {
     size_t k = params::default_row_size;
     size_t l = params::default_packing_size;
     size_t n = params::default_encoding_size;
-    
+
     if (jconfig.contains("packing")) {
         uint64_t packing = jconfig["packing"];
-        k = packing;
-        l = k - params::sample_size;
-        n = 4 * k;
+        k                = packing;
+        l                = k - params::sample_size;
+        n                = 4 * k;
     }
-    std::cout << "packing: " << l << ", padding: " << k << ", encoding: " << n << std::endl;
+    std::cout << "packing: " << l << ", padding: " << k << ", encoding: " << n
+              << std::endl;
 
     if (jconfig.contains("shader-path")) {
         shader_path = jconfig["shader-path"].template get<std::string>();
@@ -107,37 +107,37 @@ int main(int argc, const char *argv[]) {
 
     {
         const std::string arg0("Ligero");
-        input_args.emplace_back((u8*)arg0.c_str(), (u8*)arg0.c_str() + arg0.size() + 1);
+        input_args.emplace_back((u8 *)arg0.c_str(),
+                                (u8 *)arg0.c_str() + arg0.size() + 1);
     }
-    
+
     if (jconfig.contains("args")) {
         for (const auto& arg : jconfig["args"]) {
             std::cout << "args: " << arg.dump() << std::endl;
-            
+
             if (arg.contains("i64")) {
                 auto i = arg["i64"].template get<int64_t>();
-                input_args.emplace_back((u8*)&i, (u8*)&i + sizeof(int64_t));
-            }
-            else if (arg.contains("str")) {
+                input_args.emplace_back((u8 *)&i, (u8 *)&i + sizeof(int64_t));
+            } else if (arg.contains("str")) {
                 auto str = arg["str"].template get<std::string>();
-                input_args.emplace_back((u8*)str.c_str(), (u8*)str.c_str() + str.size() + 1);
-            }
-            else if (arg.contains("hex")) {
+                input_args.emplace_back((u8 *)str.c_str(),
+                                        (u8 *)str.c_str() + str.size() + 1);
+            } else if (arg.contains("hex")) {
                 std::vector<u8> hex_vec;
                 auto hex_str = arg["hex"].template get<std::string>();
-                
+
                 // Remove leading "0x"
                 if (hex_str.starts_with("0x")) {
                     hex_str = hex_str.substr(2);
                 }
-                
+
                 if (hex_str.size() % 2 == 1) {
                     hex_str.insert(hex_str.begin(), '0');
                 }
-                boost::algorithm::unhex(hex_str.c_str(), std::back_inserter(hex_vec));
+                boost::algorithm::unhex(hex_str.c_str(),
+                                        std::back_inserter(hex_vec));
                 input_args.emplace_back(std::move(hex_vec));
-            }
-            else {
+            } else {
                 std::cerr << "Invalid args type: " << arg.dump() << std::endl;
                 exit(-1);
             }
@@ -146,20 +146,31 @@ int main(int argc, const char *argv[]) {
 
     std::unordered_set<int> indices_set;
     if (jconfig.contains("private-indices")) {
-        indices_set = jconfig["private-indices"].template get<std::unordered_set<int>>();
+        indices_set =
+            jconfig["private-indices"].template get<std::unordered_set<int>>();
     }
 
     fs::path program_name;
     if (jconfig.contains("program")) {
         program_name = jconfig["program"].template get<std::string>();
     }
-    
+
+    // Compute hash of all public inputs for Fiat-Shamir
+    params::hasher::digest instance_hash;
+    for (int i = 0; i < input_args.size(); i++) {
+        if (!indices_set.contains(i)) {
+            instance_hash =
+                zkp::hash<params::hasher>(instance_hash, input_args[i]);
+        }
+    }
+
     // Reading and parsing the wasm file
     // ------------------------------------------------------------
-    std::unique_ptr<wabt::Module> wabt_module{ new wabt::Module{} };
+    std::unique_ptr<wabt::Module> wabt_module{new wabt::Module{}};
     {
         std::vector<uint8_t> program_data;
-        wabt::Result read_result = wabt::ReadFile(program_name.c_str(), &program_data);
+        wabt::Result read_result =
+            wabt::ReadFile(program_name.c_str(), &program_data);
 
         if (wabt::Failed(read_result)) {
             std::cerr << std::format("Error: Could not read from file \"{}\"",
@@ -169,22 +180,22 @@ int main(int argc, const char *argv[]) {
         }
 
         wabt::Features wabt_features;
-        wabt::Result   parsing_result;
-        wabt::Errors   parsing_errors;
-        if (program_name.extension() == ".wat" || program_name.extension() == ".wast") {
-            std::unique_ptr<wabt::WastLexer> lexer = wabt::WastLexer::CreateBufferLexer(
-                program_name.c_str(),
-                program_data.data(),
-                program_data.size(),
-                &parsing_errors);
+        wabt::Result parsing_result;
+        wabt::Errors parsing_errors;
+        if (program_name.extension() == ".wat" ||
+            program_name.extension() == ".wast") {
+            std::unique_ptr<wabt::WastLexer> lexer =
+                wabt::WastLexer::CreateBufferLexer(program_name.c_str(),
+                                                   program_data.data(),
+                                                   program_data.size(),
+                                                   &parsing_errors);
 
             wabt::WastParseOptions parse_wast_options(wabt_features);
             parsing_result = wabt::ParseWatModule(lexer.get(),
                                                   &wabt_module,
                                                   &parsing_errors,
                                                   &parse_wast_options);
-        }
-        else {
+        } else {
             parsing_result = wabt::ReadBinaryIr(program_name.c_str(),
                                                 program_data.data(),
                                                 program_data.size(),
@@ -194,11 +205,12 @@ int main(int argc, const char *argv[]) {
         }
 
         if (wabt::Failed(parsing_result)) {
-            auto err_msg = wabt::FormatErrorsToString(parsing_errors,
-                                                      wabt::Location::Type::Binary);
+            auto err_msg = wabt::FormatErrorsToString(
+                parsing_errors, wabt::Location::Type::Binary);
             std::cerr << std::format("wabt: {}", err_msg)
-                      << std::format("Error: Failed to parse WASM module \"{}\"",
-                                     program_name.c_str())
+                      << std::format(
+                             "Error: Failed to parse WASM module \"{}\"",
+                             program_name.c_str())
                       << std::endl;
             exit(EXIT_FAILURE);
         }
@@ -208,63 +220,59 @@ int main(int argc, const char *argv[]) {
 
     executor_t executor;
     executor.webgpu_init(gpu_threads, shader_path);
-    executor.ntt_init(l, k, n,
-                      field_t::modulus, field_t::barrett_factor,
-                      omega_k, omega_2k, omega_4k);
+    executor.ntt_init(l,
+                      k,
+                      n,
+                      field_t::modulus,
+                      field_t::barrett_factor,
+                      omega_k,
+                      omega_2k,
+                      omega_4k);
 
     // ================================================================================
 
-    params::hasher::digest stage1_root;
-    params::hasher::digest sample_seed;
-    std::vector<uint32_t> encoded_code_limbs, encoded_linear_limbs, encoded_quad_limbs;
-    zkp::merkle_tree<params::hasher>::decommitment decommit;
-
-    std::stringstream compressed_proof;
-    io::filtering_istream proof_stream;
-    std::unique_ptr<portable_binary_iarchive> archive_ptr;
+    zkp::ProofData proof_data;
     try {
         std::ifstream proof_file(proof_name, std::ios::in | std::ios::binary);
 
         if (!proof_file) {
-            std::cerr << std::format("Error: Could not read from file \"{}\"", proof_name)
+            std::cerr << std::format("Error: Could not read from file \"{}\"",
+                                     proof_name)
                       << std::endl;
             exit(EXIT_FAILURE);
         }
 
+        std::stringstream compressed_proof;
         compressed_proof << proof_file.rdbuf();
         proof_file.close();
 
-        proof_stream.push(io::gzip_decompressor());
-        proof_stream.push(compressed_proof);
+        io::filtering_istream gzip_in;
+        gzip_in.push(io::gzip_decompressor());
+        gzip_in.push(compressed_proof);
 
-        archive_ptr = std::make_unique<portable_binary_iarchive>(proof_stream);
-        *archive_ptr >> stage1_root
-                     >> sample_seed
-                     >> encoded_code_limbs
-                     >> encoded_linear_limbs
-                     >> encoded_quad_limbs
-                     >> decommit;
-    }
-    catch (const boost::archive::archive_exception& ex) {
-        switch (ex.code) {
-            case boost::archive::archive_exception::unsupported_version:
-                std::cerr
-                    << "Error: boost.archive: " << ex.what() << std::endl
-                    << "It seems the proof was created with a newer version of Boost.Archive. \n"
-                    << "Please update your Boost version to latest, or ask the file creator to use an older version." << std::endl;
-                break;
-            default:
-                std::cerr << "Error: boost.archive: " << ex.what() << std::endl;
-                break;
-        }
+        std::string serialized((std::istreambuf_iterator<char>(gzip_in)),
+                               std::istreambuf_iterator<char>());
 
+        proof_data = zkp::deserialize_proof(serialized);
+    } catch (const std::exception& ex) {
+        std::cerr << "Error: " << ex.what() << std::endl;
         std::cerr << "Verification failed, exiting" << std::endl;
         exit(EXIT_FAILURE);
     }
-    catch (const std::exception& ex) {
-        std::cerr << "Error: " << ex.what() << std::endl;
-        exit(EXIT_FAILURE);
-    }
+
+    const auto& stage1_root          = proof_data.merkle_root;
+    const auto& encoded_code_limbs   = proof_data.encoded_code_limbs;
+    const auto& encoded_linear_limbs = proof_data.encoded_linear_limbs;
+    const auto& encoded_quad_limbs   = proof_data.encoded_quad_limbs;
+    const auto& decommit             = proof_data.decommit;
+
+    auto stage1_seed =
+        zkp::hash<params::hasher>("LigetronStage1", stage1_root, instance_hash);
+    auto sample_seed = zkp::hash<params::hasher>("LigetronStage2",
+                                                 stage1_root,
+                                                 encoded_code_limbs,
+                                                 encoded_linear_limbs,
+                                                 encoded_quad_limbs);
 
     std::cout << "=============== Start Verify ===============" << std::endl;
 
@@ -272,38 +280,30 @@ int main(int argc, const char *argv[]) {
 
     // Prepare random seed
     unsigned char seed[params::hasher::digest_size];
-    std::copy(stage1_root.begin(), stage1_root.end(), seed);
+    std::memcpy(seed, stage1_seed.data, params::hasher::digest_size);
 
     // Re-generate sample indexes
     zkp::hash_random_engine<params::hasher> engine(sample_seed);
     std::vector<size_t> indexes(n), sample_index;
     std::iota(indexes.begin(), indexes.end(), 0);
-    portable_sample(indexes.begin(), indexes.end(),
+    portable_sample(indexes.begin(),
+                    indexes.end(),
                     std::back_inserter(sample_index),
                     params::sample_size,
                     engine);
     std::sort(sample_index.begin(), sample_index.end());
-    
+
     auto vctx = std::make_unique<
         zkp::nonbatch_verifier_context<field_t,
                                        executor_t,
                                        zkp::verifier_random_policy,
-                                       params::hasher,
-                                       portable_binary_iarchive>>(executor,
-                                                                  sample_index,
-                                                                  *archive_ptr);
-    vctx-> init_witness_random(seed, params::any_iv);
+                                       params::hasher>>(
+        executor, sample_index, std::move(proof_data.host_samplings));
+    vctx->init_witness_random(seed, params::any_iv);
 
     try {
         run_program(*wabt_module, *vctx, input_args, indices_set);
-
-        if (proof_stream.peek() != EOF) {
-            std::cerr << "Error: proof size is bigger than it should be" << std::endl;
-            std::cerr << "Verification failed, exiting" << std::endl;
-            exit(EXIT_FAILURE);
-        }
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         std::cout << "Error: " << e.what() << std::endl;
         std::cerr << "Verification failed, exiting" << std::endl;
         exit(EXIT_FAILURE);
@@ -311,30 +311,34 @@ int main(int argc, const char *argv[]) {
 
     vt.stop();
 
-    auto vs1_root = zkp::merkle_tree<params::hasher>::recommit(vctx->flush_digests(), decommit);
+    auto vs1_root = zkp::merkle_tree<params::hasher>::recommit(
+        vctx->flush_digests(), decommit);
 
     // ------------------------------------------------------------
-    
-    auto linear_sums = vctx->linear_sums();
+
+    auto linear_sums        = vctx->linear_sums();
     buffer_t vcode_buffer   = vctx->code();
     buffer_t vlinear_buffer = vctx->linear();
     buffer_t vquad_buffer   = vctx->quadratic();
 
     mpz_vector vsample_code, vsample_linear, vsample_quad;
 
-    auto vsample_code_limbs = executor.template copy_to_host<uint32_t>(vcode_buffer);
+    auto vsample_code_limbs =
+        executor.template copy_to_host<uint32_t>(vcode_buffer);
     vsample_code.import_limbs(vsample_code_limbs.data(),
                               vsample_code_limbs.size(),
                               sizeof(uint32_t),
                               field_t::num_u32_limbs);
 
-    auto vsample_linear_limbs = executor.template copy_to_host<uint32_t>(vlinear_buffer);
+    auto vsample_linear_limbs =
+        executor.template copy_to_host<uint32_t>(vlinear_buffer);
     vsample_linear.import_limbs(vsample_linear_limbs.data(),
                                 vsample_linear_limbs.size(),
                                 sizeof(uint32_t),
                                 field_t::num_u32_limbs);
 
-    auto vsample_quad_limbs = executor.template copy_to_host<uint32_t>(vquad_buffer);
+    auto vsample_quad_limbs =
+        executor.template copy_to_host<uint32_t>(vquad_buffer);
     vsample_quad.import_limbs(vsample_quad_limbs.data(),
                               vsample_quad_limbs.size(),
                               sizeof(uint32_t),
@@ -346,9 +350,13 @@ int main(int argc, const char *argv[]) {
     buffer_t device_linear = executor.make_codeword_buffer();
     buffer_t device_quad   = executor.make_codeword_buffer();
 
-    executor.write_buffer(device_code,   encoded_code_limbs.data(),   encoded_code_limbs.size());
-    executor.write_buffer(device_linear, encoded_linear_limbs.data(), encoded_linear_limbs.size());
-    executor.write_buffer(device_quad,   encoded_quad_limbs.data(),   encoded_quad_limbs.size());
+    executor.write_buffer(
+        device_code, encoded_code_limbs.data(), encoded_code_limbs.size());
+    executor.write_buffer(device_linear,
+                          encoded_linear_limbs.data(),
+                          encoded_linear_limbs.size());
+    executor.write_buffer(
+        device_quad, encoded_quad_limbs.data(), encoded_quad_limbs.size());
 
     auto bind_ntt_pc = executor.bind_ntt(device_code);
     auto bind_ntt_pl = executor.bind_ntt(device_linear);
@@ -357,7 +365,7 @@ int main(int argc, const char *argv[]) {
     executor.decode_ntt_device(bind_ntt_pc);
     executor.decode_ntt_device(bind_ntt_pl);
     executor.decode_ntt_device(bind_ntt_pq);
-    
+
     mpz_vector prover_code, prover_linear, prover_quad;
 
     {
@@ -384,8 +392,8 @@ int main(int argc, const char *argv[]) {
         prover_quad.resize(l);
     }
 
-
-    mpz_vector prover_encoded_codes, prover_encoded_linears, prover_encoded_quads;
+    mpz_vector prover_encoded_codes, prover_encoded_linears,
+        prover_encoded_quads;
     prover_encoded_codes.import_limbs(encoded_code_limbs.data(),
                                       encoded_code_limbs.size(),
                                       sizeof(uint32_t),
@@ -400,9 +408,10 @@ int main(int argc, const char *argv[]) {
                                       field_t::num_u32_limbs);
 
     std::cout << std::boolalpha;
-    
+
     bool valid_merkle = stage1_root == vs1_root;
-    bool valid_code   = std::all_of(prover_code.begin() + k, prover_code.end(),
+    bool valid_code   = std::all_of(prover_code.begin() + k,
+                                  prover_code.end(),
                                   [](const auto& x) { return x == 0; });
     bool valid_linear = zkp::validate_sum<field_t>(prover_linear, linear_sums);
     bool valid_quad   = zkp::validate(prover_quad);
@@ -412,10 +421,10 @@ int main(int argc, const char *argv[]) {
     zkp::show_hash(stage1_root);
     std::cout << "Verifier root: ";
     zkp::show_hash(vs1_root);
-    std::cout << "Validating Merkle Tree Root:         "
-              << valid_merkle   << std::endl;
-    std::cout << "Validating Encoding Correctness:     "
-              << valid_code   << std::endl;
+    std::cout << "Validating Merkle Tree Root:         " << valid_merkle
+              << std::endl;
+    std::cout << "Validating Encoding Correctness:     " << valid_code
+              << std::endl;
     std::cout << "Validating Linear Constraints:       ";
     std::cout << valid_linear << " " << std::endl;
     std::cout << "Validating Quadratic Constraints:    ";
@@ -423,21 +432,25 @@ int main(int argc, const char *argv[]) {
 
     bool code_equal = true, linear_equal = true, quad_equal = true;
     for (size_t i = 0; i < params::sample_size; i++) {
-        code_equal   &= prover_encoded_codes[sample_index[i]]   == vsample_code[i];
-        linear_equal &= prover_encoded_linears[sample_index[i]] == vsample_linear[i];
-        quad_equal   &= prover_encoded_quads[sample_index[i]]   == vsample_quad[i];
+        code_equal &= prover_encoded_codes[sample_index[i]] == vsample_code[i];
+        linear_equal &=
+            prover_encoded_linears[sample_index[i]] == vsample_linear[i];
+        quad_equal &= prover_encoded_quads[sample_index[i]] == vsample_quad[i];
     }
 
-    bool verify_result = valid_merkle &&
-        valid_code && valid_linear && valid_quad &&
-        code_equal && linear_equal && quad_equal;
+    bool verify_result = valid_merkle && valid_code && valid_linear &&
+                         valid_quad && code_equal && linear_equal && quad_equal;
 
-    std::cout << "Validating Encoding Equality:        " << code_equal   << std::endl
-              << "Validating Linear Equality:          " << linear_equal << std::endl
-              << "Validating Quadratic Equality:       " << quad_equal   << std::endl
+    std::cout << "Validating Encoding Equality:        " << code_equal
+              << std::endl
+              << "Validating Linear Equality:          " << linear_equal
+              << std::endl
+              << "Validating Quadratic Equality:       " << quad_equal
+              << std::endl
               << "-----------------------------------------" << std::endl
-              << "Final Verify Result:                 " << verify_result << std::endl;
-    
+              << "Final Verify Result:                 " << verify_result
+              << std::endl;
+
     show_timer();
 
 #if defined(__EMSCRIPTEN__)
@@ -446,6 +459,6 @@ int main(int argc, const char *argv[]) {
     // therefore we need to do it manually.
     clear_timers();
 #endif
-    
+
     return !verify_result;
 }

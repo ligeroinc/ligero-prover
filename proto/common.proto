@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package ligero.common.v1;
+
+// Defines the cryptographic hash algorithm used.
+enum HashAlgorithm {
+  HASH_ALGORITHM_UNSPECIFIED = 0;
+  HASH_ALGORITHM_SHA256 = 1;
+  // HASH_ALGORITHM_KECCAK256 = 2;
+  // HASH_ALGORITHM_BLAKE3 = 3;
+}
+
+// Defines the cryptographic proof system variant used.
+enum ProofType {
+  PROOF_TYPE_UNSPECIFIED = 0;
+  PROOF_TYPE_CLASSIC = 1;
+  PROOF_TYPE_PREPROCESS = 2;
+}
+
+// Represents a generic cryptographic hash digest.
+message HashDigest {
+  // The actual raw bytes of the hash.
+  // Length validation (e.g., 32 bytes for SHA-256) is handled by the application layer.
+  bytes value = 1;
+}
+
+// Represents a cryptographic decommitment against a Merkle tree.
+message MerkleDecommitment {
+  HashAlgorithm algorithm = 1;
+  HashDigest root = 2;
+  repeated HashDigest sibling_hashes = 3;
+  repeated uint32 leaf_indices = 4;
+}

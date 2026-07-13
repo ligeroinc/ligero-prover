@@ -10,6 +10,29 @@ namespace webgpu {
 // Internal linkage helpers
 namespace {
 
+const char* adapterTypeName(WGPUAdapterType type) {
+    switch (type) {
+    case WGPUAdapterType_DiscreteGPU:   return "DiscreteGPU";
+    case WGPUAdapterType_IntegratedGPU: return "IntegratedGPU";
+    case WGPUAdapterType_CPU:           return "CPU";
+    default:                            return "Unknown";
+    }
+}
+
+const char* backendTypeName(WGPUBackendType type) {
+    switch (type) {
+    case WGPUBackendType_Null:     return "Null";
+    case WGPUBackendType_WebGPU:   return "WebGPU";
+    case WGPUBackendType_D3D11:    return "D3D11";
+    case WGPUBackendType_D3D12:    return "D3D12";
+    case WGPUBackendType_Metal:    return "Metal";
+    case WGPUBackendType_Vulkan:   return "Vulkan";
+    case WGPUBackendType_OpenGL:   return "OpenGL";
+    case WGPUBackendType_OpenGLES: return "OpenGLES";
+    default:                       return "Undefined";
+    }
+}
+
 // Helper to wait for a WebGPU future to complete
 // Uses blocking wait - emdawnwebgpu handles asyncify internally for web builds
 void waitForFuture(WGPUInstance instance, WGPUFuture future) {
@@ -40,7 +63,20 @@ WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
                     LIGERO_LOG_ERROR
                         << "Failed to request adapter: "
                         << std::string_view(msg.data, msg.length);
+                    return;
                 }
+
+                WGPUAdapterInfo adapterInfo {};
+                wgpuAdapterGetInfo(a, &adapterInfo);
+                LIGERO_LOG_INFO
+                    << "Selected adapter: "
+                    << std::string_view(adapterInfo.device.data, adapterInfo.device.length)
+                    << " (vendor="
+                    << std::string_view(adapterInfo.vendor.data, adapterInfo.vendor.length)
+                    << ", type=" << adapterTypeName(adapterInfo.adapterType)
+                    << ", backend=" << backendTypeName(adapterInfo.backendType) << ")";
+                wgpuAdapterInfoFreeMembers(adapterInfo);
+
                 *reinterpret_cast<WGPUAdapter*>(ud1) = a;
             },
         .userdata1 = &adapter,

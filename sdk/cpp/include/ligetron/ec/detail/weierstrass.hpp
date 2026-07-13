@@ -22,7 +22,7 @@
 #define __LIGETRON_EC_DETAIL_WEIERSTRASS_HPP__
 
 #include "coordinates.hpp"
-#include <ligetron/bn254fr_class.h>
+#include "generator_table.hpp"
 
 
 namespace ligetron::ec::detail {
@@ -46,100 +46,6 @@ concept WeierstrassAffineCurveDef = requires {
         std::convertible_to<typename CurveDef::base_field_element>;
 };
 
-template <typename CurveDef>
-concept WeierstrassAffineCurveDefHasGeneratorTable =
-        requires(size_t window_index, size_t index) {
-
-    { CurveDef::generator_table_window_bit_size } ->
-        std::convertible_to<size_t>;
-
-    { CurveDef::generator_table()[window_index][index] } ->
-        std::convertible_to <
-            std::tuple <
-                typename CurveDef::base_field_element,
-                typename CurveDef::base_field_element
-            >
-        >;
-};
-
-template <typename CurveDef>
-concept WeierstrassAffineCurveDefWithGeneratorTable =
-    WeierstrassAffineCurveDef<CurveDef> &&
-    WeierstrassAffineCurveDefHasGeneratorTable<CurveDef>;
-
-template <WeierstrassAffineCurveDefWithGeneratorTable CurveDef>
-struct weierstrass_affine_curve_generator_table {
-    using base_field_element   = typename CurveDef::base_field_element;
-    using scalar_field_element = typename CurveDef::scalar_field_element;
-    using point                = affine_coordinate<base_field_element>;
-
-    static constexpr size_t window_bit_size =
-        CurveDef::generator_table_window_bit_size;
-
-    static constexpr size_t window_size = 2 << (window_bit_size - 1);
-
-    /// Performs oblivious table lookup for specified window index
-    /// and index in window
-    static point lookup(size_t window_index, bn254fr_class &index) {
-        // decode index into array of selectors
-        std::array<bn254fr_class, window_size> selectors;
-        decompose_index(selectors, index);
-
-        base_field_element zero;
-
-        // the result is the sum of products of selectors and table items
-        base_field_element sum_x;
-        base_field_element sum_y;
-
-        for (int i = 0; i < window_size; ++i) {
-            auto [x, y] = CurveDef::generator_table()[window_index][i];
-
-            auto mux_res_x = base_field_element::mux(selectors[i], zero, x);
-            auto mux_res_y = base_field_element::mux(selectors[i], zero, y);
-
-            sum_x = sum_x + mux_res_x;
-            sum_y = sum_y + mux_res_y;
-        }
-
-        return point{sum_x, sum_y};
-    }
-
-    /// Decomposes index into selector bits.
-    /// Assumes selectors array is initialized with zeros.
-    static void decompose_index(
-            std::array<bn254fr_class, window_size> &selectors,
-            bn254fr_class &index) {
-
-        bn254fr_class bn254fr_index{index};
-        bn254fr_class bn254fr_zero;
-
-        bn254fr_class sum;      // sum of all selectors
-
-        for (int i = 0; i < window_size; ++i) {
-            // calculate value of selector without constraints
-            if (i == bn254fr_index) {
-                selectors[i].set_u32(1);
-            } else {
-                // selectors[i] should be previously initialized to zero
-            }
-
-            // add selectors[i] * (index - i) === 0 constraint
-            bn254fr_class bn254fr_i{i};
-            bn254fr_class index_minus_i;
-            submod(index_minus_i, bn254fr_index, bn254fr_i);
-            bn254fr_class mul_res;
-            mulmod(mul_res, selectors[i], index_minus_i);
-            bn254fr_class::assert_equal(mul_res, bn254fr_zero);
-
-            addmod(sum, sum, selectors[i]);
-        }
-
-        // sum of all selectors must be 1
-        bn254fr_class one{1};
-        bn254fr_class::assert_equal(sum, one);
-    }
-};
-
 template <WeierstrassAffineCurveDef CurveDef>
 struct weierstrass_affine_curve {
     using base_field_element   = typename CurveDef::base_field_element;
@@ -159,6 +65,10 @@ struct weierstrass_affine_curve {
         return res;
     }
 
+    static point identity() {
+        return point{0, 0};
+    }
+
     static point point_add(const point &p1, const point &p2) {
         auto u1 = p2.y() - p1.y();
         auto u2 = p2.x() - p1.x();
@@ -170,12 +80,16 @@ struct weierstrass_affine_curve {
         auto t3 = lam * t2;
         auto y3 = t3 - p1.y();
 
-        // checking if p1 is zero
+        // checking if p1 or p2 is zero
         bn254fr_class p1_is_zero = point_is_zero(p1);
+        bn254fr_class p2_is_zero = point_is_zero(p2);
 
         // result is equal to p2 if p1 is zero
         auto res_x = base_field_element::mux(p1_is_zero, x3, p2.x());
         auto res_y = base_field_element::mux(p1_is_zero, y3, p2.y());
+        // result is equal to p1 if p2 is zero
+        res_x = base_field_element::mux(p2_is_zero, res_x, p1.x());
+        res_y = base_field_element::mux(p2_is_zero, res_y, p1.y());
         return point{res_x, res_y};
     }
 
@@ -208,14 +122,14 @@ struct weierstrass_affine_curve {
     }
 
     static constexpr size_t generator_table_window_bit_size =
-         WeierstrassAffineCurveDefHasGeneratorTable<CurveDef> ?
-         CurveDef::generator_table_window_bit_size :
+         EllipticCurveDefWithGeneratorTable<CurveDef> ?
+         CurveDef::generator_table::window_bit_size :
          0;
 
     static point generator_table_lookup(size_t window_index,
                                         bn254fr_class &index)
-    requires WeierstrassAffineCurveDefHasGeneratorTable<CurveDef> {
-        using table_t = weierstrass_affine_curve_generator_table<CurveDef>;
+    requires EllipticCurveDefWithGeneratorTable<CurveDef> {
+        using table_t = generator_table<typename CurveDef::generator_table>;
         return table_t::lookup(window_index, index);
     }
 };

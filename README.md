@@ -207,7 +207,7 @@ From the project root directory:
 ```bash
 mkdir build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
-make
+make -j
 ```
 
 ---
@@ -218,7 +218,7 @@ First, make sure Emscripten is installed and activated on your system. See [Inst
 Before we continue, it's important to understand how the web build works:
 - All dependencies must be built as WASM and installed to `<path-to-wasm-libs>`. To make life easier, we provide a repo that contains precompiled dependencies: [wasm-libs](https://github.com/ligeroinc/wasm-libs).
 - To avoid uploading the shader and application each time opening the page, we use Emscripten's preload feature. All contents in the `<build-directory>/pack` folder will be automatically bundled at compile time. (Remember to clear the cache after changing the contents since it won't trigger a recompile.)
-- The target prover/verifier WASM will be embedded in an HTML shell (the default one is `emscripten_templates/edit_distance.html`). Depending on your needs, you can customize the shell to take a different number of inputs.
+- The prover and verifier each have their own HTML shell template (`emscripten_templates/prover.html` and `emscripten_templates/verifier.html`). These provide a Bootstrap dark-theme UI with file upload for WASM programs and proof files, a JSON config editor, and cross-links between prover and verifier pages. To use custom shells, pass `-DPROVER_SHELL_FILE=<path>` and/or `-DVERIFIER_SHELL_FILE=<path>` at configure time.
 
 From the project root directory:
 ``` bash
@@ -236,10 +236,21 @@ emmake make
 
 **IMPORTANT**
 
-Although it's tempting to double-click and open the `webgpu_prover.html`, it won't work since the strict browser CORS rules prohibit loading other files from localhost. Use `emrun` or hosting a HTTP server instead:
+Although it's tempting to double-click and open the HTML files, it won't work since strict browser CORS rules prohibit loading other files from localhost. Use `emrun` or host an HTTP server instead:
 
 ```bash
 emrun --browser chrome webgpu_prover.html
+emrun --browser chrome webgpu_verifier.html
+```
+
+The prover page lets you upload a WASM program, edit the JSON config, run the proof, and download the resulting `proof_data.gz`. The verifier page lets you upload the proof file and verify it. Each page cross-links to the other.
+
+To use a custom HTML shell (e.g. the included edit distance demo shell for both targets):
+
+```bash
+emcmake cmake -DCMAKE_BUILD_TYPE=Web -DCMAKE_PREFIX_PATH=<path-to-wasm-libs> \
+  -DPROVER_SHELL_FILE=$PWD/../emscripten_templates/edit_distance.html \
+  -DVERIFIER_SHELL_FILE=$PWD/../emscripten_templates/edit_distance.html ..
 ```
 
 ---

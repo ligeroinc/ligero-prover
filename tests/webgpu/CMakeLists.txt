@@ -35,7 +35,7 @@ foreach(TEST_SRC ${WEBGPU_TEST_SOURCES})
     target_include_directories(webgpu_${TEST_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
     target_compile_definitions(webgpu_${TEST_NAME}
-      PRIVATE PROJECT_ROOT_DIR="${PROJECT_SOURCE_DIR}/")
+      PRIVATE PROJECT_ROOT_DIR="${PROJECT_BINARY_DIR}/")
 
     link_binaries(webgpu_${TEST_NAME})
 

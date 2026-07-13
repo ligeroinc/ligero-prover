@@ -195,7 +195,7 @@ struct field_element {
         return res;
     }
 
-    static bool eq(const field_element& a, const field_element& b)
+    static typename Policy::boolean_type eq(const field_element& a, const field_element& b)
     requires HasEq<Policy> {
         return Policy::eq(a.data_, b.data_);
     }

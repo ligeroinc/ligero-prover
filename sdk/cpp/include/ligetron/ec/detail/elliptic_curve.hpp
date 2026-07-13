@@ -38,6 +38,7 @@ concept EllipticCurveBackend =
     typename Backend::scalar_field_element;
     typename Backend::point;
 
+    { Backend::identity() } -> std::convertible_to<typename Backend::point>;
     { Backend::point_add(p1, p2) } ->
         std::convertible_to<typename Backend::point>;
     { Backend::point_double(p1) } ->
@@ -59,6 +60,13 @@ concept EllipticCurveBackendHasGeneratorTable =
 
     { Backend::generator_table_lookup(window_index, index) } ->
         std::convertible_to<typename Backend::point>;
+};
+
+template <typename Backend>
+concept EllipticCurveBackendHashIsPointOnCurve =
+        requires (const typename Backend::point &p) {
+
+    { Backend::is_point_on_curve(p) } -> std::convertible_to<bn254fr_class>;
 };
 
 template <EllipticCurveBackend Backend>
@@ -84,7 +92,7 @@ struct elliptic_curve {
         std::array<bn254fr_class, scalar_field_element::num_rounded_bits> bits;
         s.to_bits(bits.data());
 
-        point sum;
+        point sum = Backend::identity();
         point p_pow = p;
 
         // iterating over bits and performing point addition and double
@@ -141,6 +149,11 @@ struct elliptic_curve {
 
     static point generator() {
         return Backend::generator();
+    }
+
+    static auto is_point_on_curve(const point &p)
+    requires EllipticCurveBackendHashIsPointOnCurve<Backend> {
+        return Backend::is_point_on_curve(p);
     }
 };
 

@@ -29,11 +29,6 @@
 #include <util/mpz_vector.hpp>
 #include <ligetron/webgpu/buffer_binding.hpp>
 
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/serialization/vector.hpp>
-#include <boost/serialization/unordered_map.hpp>
-
 namespace ligero::vm::zkp {
 
 enum class context_role : uint8_t {
@@ -444,7 +439,7 @@ struct nonbatch_stage1_context
         }
 
     ~nonbatch_stage1_context() {
-        
+
     }
 
     void linear_callback(witness_row_type row) override {
@@ -867,7 +862,7 @@ protected:
 
     webgpu::buffer_binding bind_ntt_x_, bind_ntt_y_, bind_ntt_z_;
     webgpu::buffer_binding bind_ntt_rand_x_, bind_ntt_rand_y_, bind_ntt_rand_z_;
-    
+
     webgpu::buffer_binding bind_code_check_x_, bind_code_check_y_, bind_code_check_z_;
     webgpu::buffer_binding bind_linear_check_x_, bind_linear_check_y_, bind_linear_check_z_;
     webgpu::buffer_binding bind_quadratic_check_mul_, bind_quadratic_check_sub_, bind_quadratic_check_fma_;
@@ -879,8 +874,7 @@ protected:
 
 template <typename Field,
           typename Executor,
-          typename RandomPolicy,
-          typename OutputArchive>
+          typename RandomPolicy>
 struct nonbatch_stage3_context
     : public nonbatch_context_base<Field, Executor, RandomPolicy>
 {
@@ -896,11 +890,9 @@ struct nonbatch_stage3_context
     static constexpr context_role role = context_role::prover;
 
     nonbatch_stage3_context(Executor& exe,
-                            const std::vector<size_t>& si,
-                            OutputArchive& oa)
+                            const std::vector<size_t>& si)
         : Base(exe),
-          sample_index_(si),
-          oa_(oa)
+          sample_index_(si)
         {
             exe.sampling_init(si);
 
@@ -915,7 +907,7 @@ struct nonbatch_stage3_context
                 si.size() *
                 Executor::device_bignum_type::num_bytes *
                 num_sampling_threshold_);
-            
+
             bind_ntt_x_ = exe.bind_ntt(device_x_);
             bind_ntt_y_ = exe.bind_ntt(device_y_);
             bind_ntt_z_ = exe.bind_ntt(device_z_);
@@ -941,7 +933,7 @@ struct nonbatch_stage3_context
     }
 
     void sample_row(webgpu::buffer_binding bind) {
-        if (sampling_count_ >= num_sampling_threshold_) {        
+        if (sampling_count_ >= num_sampling_threshold_) {
             sync_sample_to_host();
         }
 
@@ -1058,13 +1050,13 @@ struct nonbatch_stage3_context
         Base::finalize();
 
         sync_sample_to_host();
-        oa_ << host_samplings_;
     }
+
+    const std::vector<uint32_t>& host_samplings() const { return host_samplings_; }
 
 protected:
     std::vector<size_t> sample_index_;
     std::vector<uint64_t> limbs_;
-    OutputArchive& oa_;
 
     buffer_t device_x_, device_y_, device_z_;
     buffer_t device_samplings_;
@@ -1085,8 +1077,7 @@ protected:
 template <typename Field,
           typename Executor,
           typename RandomPolicy,
-          typename Hasher,
-          typename InputArchive>
+          typename Hasher>
 struct nonbatch_verifier_context
     : public nonbatch_context_base<Field, Executor, RandomPolicy>
 {
@@ -1105,15 +1096,13 @@ struct nonbatch_verifier_context
 
     nonbatch_verifier_context(Executor& exe,
                               const std::vector<size_t>& si,
-                              InputArchive& ia)
+                              std::vector<uint32_t> host_samplings)
         : Base(exe), sample_index_(si),
           pop_offset_(0),
-          ia_(ia)
+          host_samplings_(std::move(host_samplings))
         {
             exe.sha256_init(si.size());
             exe.sampling_init(si);
-
-            ia_ >> host_samplings_;
 
             limbs_.resize(2 * this->executor().padding_size() * field_type::num_u64_limbs);
 
@@ -1375,8 +1364,6 @@ protected:
     std::vector<size_t> sample_index_;
     std::vector<uint32_t> host_samplings_;
     std::vector<uint64_t> limbs_;
-
-    InputArchive& ia_;
 
     buffer_t code_, linear_, quad_;
     buffer_t tmp1_, tmp2_;

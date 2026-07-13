@@ -1,0 +1,168 @@
+/*
+ * Copyright (C) 2023-2026 Ligero, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// BN254 prime modulus P =
+// 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
+const BN254_p : bigint = bigint(array<uint128, 2>(
+    uint128(0xF0000001, 0x43E1F593, 0x79B97091, 0x2833E848),
+    uint128(0x8181585D, 0xB85045B6, 0xE131A029, 0x30644E72)
+));
+
+// 2P = 0x60c89ce5c263405370a08b6d0302b0ba5067d090f372e12287c3eb27e0000002
+const BN254_2p : bigint = bigint(array<uint128, 2>(
+    uint128(0xE0000002, 0x87C3EB27, 0xF372E122, 0x5067D090),
+    uint128(0x0302B0BA, 0x70A08B6D, 0xC2634053, 0x60C89CE5)
+));
+
+// Montgomery factor J = p^(-1) mod 2^256
+const BN254_mont_inv : bigint = bigint(array<uint128, 2>(
+    uint128(0x10000001, 0x3D1E0A6C, 0xB396EE4C, 0x9A7979B4),
+    uint128(0x66F9DC6E, 0x1C6567D7, 0xF27CBE4D, 0x8C07D0E2)
+));
+
+// Montgomery mapping factor R = (2^256) mod p
+const BN254_mont_R = bigint(array<uint128, 2>(
+    uint128(0x4FFFFFFB, 0xAC96341C, 0x9F60CD29, 0x36FC7695),
+    uint128(0x7879462E, 0x666EA36F, 0x9A07DF2F, 0x0E0A77C1)));
+
+// Barrett factor Mu = 2^(254 * 2) / p
+const BN254_barrett_factor : bigint = bigint(array<uint128, 2>(
+    uint128(0xBE1DE925, 0x620703A6, 0x09E880AE, 0x71448520),
+    uint128(0x68073014, 0xAB074A58, 0x623A04A7, 0x54A47462)
+));
+
+
+// Modular Reduction
+// --------------------------------------------------
+fn bn254fr_reduce(a : bigint) -> bigint {
+    let res : bigint_cc = bigint_sub_cc(a, BN254_p);
+    if (res.carry) {  // a < p
+        return a;
+    }
+    else {
+        return res.sum;
+    }
+}
+
+fn bn254fr_reduce_2p(a : bigint) -> bigint {
+    let res : bigint_cc = bigint_sub_cc(a, BN254_2p);
+    if (res.carry) { // a < 2p
+        return a;
+    }
+    else {
+        return res.sum;
+    }
+}
+
+// Montgomery Reduction 
+// --------------------------------------------------
+
+// Montgomery reduction step.
+// Reduces a 2×N-bit product into an N-bit residue in [-p, p).
+// Requires input in Montgomery form
+fn montgomery_reduce_helper(wide : bigint_wide) -> bigint_cc {
+    let Q = bigint_mul_lo(wide.lo, BN254_mont_inv);
+    let H = bigint_mul_hi(Q, BN254_p);
+    return bigint_sub_cc(wide.hi, H);
+}
+
+// Montgomery reduction.
+// Reduces a 2×N-bit product into an N-bit residue in [0, p).
+// Requires input in Montgomery form
+fn montgomery_reduce_wide(wide : bigint_wide) -> bigint {
+    var cc : bigint_cc = montgomery_reduce_helper(wide);
+    if (cc.carry) {
+        cc.sum = bigint_add(cc.sum, BN254_p);
+    }
+    return cc.sum;
+}
+
+// Montgomery reduction.
+// Reduces a 2×N-bit product into an N-bit residue in [0, 2p).
+// Requires input in Montgomery form
+fn montgomery_reduce_wide_2p(wide : bigint_wide) -> bigint {
+    let t : bigint = montgomery_reduce_helper(wide).sum;
+    return bigint_add(t, BN254_p);
+}
+
+fn montgomery_mul(a : bigint, b : bigint) -> bigint {
+    let mul : bigint_wide = bigint_mul_wide(a, b);
+    return montgomery_reduce_wide(mul);
+}
+
+fn montgomery_mul_2p(a : bigint, b : bigint) -> bigint {
+    let mul : bigint_wide = bigint_mul_wide(a, b);
+    return montgomery_reduce_wide_2p(mul);
+}
+
+// ---------- Barrett Reduction ----------
+
+fn barrett_reduce_wide(x : bigint_wide) -> bigint {
+    let xr_hi  : bigint_wide = bigint_mul_wide(x.hi, BN254_barrett_factor);
+    let xr_lo  : bigint      = bigint_mul_hi(x.lo, BN254_barrett_factor);
+    let sum_lo : bigint_cc   = bigint_add_cc(xr_hi.lo, xr_lo);
+    let sum_hi : bigint      = bigint_add(xr_hi.hi, bigint_from_u32(u32(sum_lo.carry)));
+    let z_hi   : bigint      = bigint_shl(sum_hi, 4u);
+    let z_lo   : bigint      = bigint_shr(sum_lo.sum, 252u);
+    let z      : bigint      = bigint_add(z_hi, z_lo);
+    let q      : bigint      = bigint_mul_lo(z, BN254_p);
+    let result : bigint      = bigint_sub(x.lo, q);
+    return bn254fr_reduce(result);
+}
+
+// ---------- Mod Inverse ----------
+
+fn bn254fr_invmod(x : bigint) -> bigint {
+    var b = x;
+    var c = BN254_p;
+
+    var u = bigint_from_u32(1u);
+    var w = bigint_from_u32(0u);
+
+    while (!bigint_is_zero(c)) {
+        let div = bigint_divide_qr(b, c);
+        b = c;
+        c = div.r;
+
+        var new_w = bigint_sub(u, bigint_mul_lo(div.q, w));
+        u = w;
+        w = new_w;
+    }
+
+    // Important: adjust for negative number
+    while (bigint_test_bit(u, num_limbs * limb_bits - 1)) {
+        u = bigint_add(u, BN254_p);
+    }
+
+    return u;
+}
+
+// ---------- Exponent Mod ----------
+
+// Compute 32-bit exponent with a Montgomery precompute table
+// Output r ^ exp mod p in Montgomery form
+fn bn254fr_powmod(table : ptr<uniform, array<bigint, 32>>, exponent : u32) -> bigint {
+    // Initialize out to be 1 * R mod p
+    var out : bigint = BN254_mont_R; 
+    for (var i : u32 = 0u; i < 32u; i++) {
+        let bi : u32 = (exponent >> i) & 1u;
+        
+        if (bi == 1u) {
+            out = montgomery_mul(out, (*table)[i]);
+        }
+    }
+    return out;
+}

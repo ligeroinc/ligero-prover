@@ -51,6 +51,8 @@ struct bn254fr_class {
     /** Resets the constraints and returns mutable pointer to internal data */
     __bn254fr* clear_data();
 
+    __bn254fr* data();
+    
     /** Returns unmutable pointer to internal data */
     const __bn254fr* data() const;
 

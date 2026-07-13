@@ -326,6 +326,90 @@ void test_eqz() {
     );
 }
 
+void do_test_set_bytes_little(const std::vector<unsigned char> &bytes,
+                              const str_vector &exp_limbs,
+                              uint32_t base) {
+    bn254fr_bigint exp = bn254fr_bigint_from_str(exp_limbs, base);
+    bn254fr_bigint res;
+    res.set_bytes_little(bytes.data(), bytes.size());
+    bn254fr_bigint_assert_equal(res, exp);
+}
+
+void test_set_bytes_little() {
+    // 0x0102030405060708 (little-endian)
+    do_test_set_bytes_little(
+        {0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01},
+        {"0102030405060708"},
+        16
+    );
+
+    // 0x000102030405060708090a0b0c0d0e0f (little-endian)
+    do_test_set_bytes_little(
+        {
+            0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08,
+            0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00
+        },
+        {"08090a0b0c0d0e0f", "0001020304050607"},
+        16
+    );
+
+    // empty => zero
+    do_test_set_bytes_little(
+        {},
+        {},
+        16
+    );
+
+    // 3 bytes (n % 8 != 0)
+    do_test_set_bytes_little(
+        {0x01, 0x02, 0x03},
+        {"0000000000030201"},
+        16
+    );
+}
+
+void do_test_set_bytes_big(const std::vector<unsigned char> &bytes,
+                           const str_vector &exp_limbs,
+                           uint32_t base) {
+    bn254fr_bigint exp = bn254fr_bigint_from_str(exp_limbs, base);
+    bn254fr_bigint res;
+    res.set_bytes_big(bytes.data(), bytes.size());
+    bn254fr_bigint_assert_equal(res, exp);
+}
+
+void test_set_bytes_big() {
+    // 0x0102030405060708 (big-endian)
+    do_test_set_bytes_big(
+        {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+        {"0102030405060708"},
+        16
+    );
+
+    // 0x000102030405060708090a0b0c0d0e0f (big-endian)
+    do_test_set_bytes_big(
+        {
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
+        },
+        {"08090a0b0c0d0e0f", "0001020304050607"},
+        16
+    );
+
+    // 3 bytes (n % 8 != 0)
+    do_test_set_bytes_big(
+        {0x01, 0x02, 0x03},
+        {"0000000000010203"},
+        16
+    );
+
+    // empty => zero limbs
+    do_test_set_bytes_big(
+        {},
+        {},
+        16
+    );
+}
+
 void do_test_convert_to_proper_signed(const str_vector &in_str,
                                       const str_vector &exp_str,
                                       uint32_t base,
@@ -395,6 +479,8 @@ int main(int argc, char * argv[]) {
     // test_invmod();
     test_eq();
     test_eqz();
+    test_set_bytes_little();
+    test_set_bytes_big();
 
     test_convert_to_proper_signed();
 

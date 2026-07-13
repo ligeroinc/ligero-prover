@@ -145,9 +145,10 @@ concept HasMux = HasBoolean<F> &&
 };
 
 template <typename F>
-concept HasEq = requires(const typename F::storage_type& a,
+concept HasEq = HasBoolean<F> &&
+                requires(const typename F::storage_type& a,
                          const typename F::storage_type& b) {
-    { F::eq(a, b) } -> std::convertible_to<bool>;
+    { F::eq(a, b) } -> std::convertible_to<typename F::boolean_type>;
 };
 
 template <typename F>

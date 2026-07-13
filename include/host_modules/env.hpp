@@ -16,45 +16,47 @@
 
 #pragma once
 
-#include <util/log.hpp>
 #include <boost/algorithm/hex.hpp>
 #include <host_modules/host_interface.hpp>
+#include <util/log.hpp>
 
 namespace ligero::vm {
 
 template <typename Context>
 struct env_module : public host_module {
-    using Self = env_module<Context>;
+    using Self         = env_module<Context>;
     using witness_type = typename Context::witness_type;
     typedef void (Self::*host_function_type)();
 
     constexpr static auto module_name = "env";
 
     env_module() = default;
-    env_module(Context *ctx) : ctx_(ctx) { }
+    env_module(Context *ctx) : ctx_(ctx) {}
 
     // /* -------------------------------------------------- */
 
     void assert_zero() {
-    /*
-        if (var.val() != 0) {
-            LIGERO_LOG_ERROR
-                << std::format("Assertion failed: expect 0, got {}", var.val());
-        }
-    */
-        auto s = ctx_->stack_pop();
+        /*
+            if (var.val() != 0) {
+                LIGERO_LOG_ERROR
+                    << std::format("Assertion failed: expect 0, got {}",
+           var.val());
+            }
+        */
+        auto s   = ctx_->stack_pop();
         auto wit = ctx_->make_witness(std::move(s));
         ctx_->backend().assert_const(wit, 0);
     }
 
     void assert_one() {
-    /*
-        if (var.val() != 1) {
-            LIGERO_LOG_ERROR
-                << std::format("Assertion failed: expect 1, got {}", var.val());
-        }
-    */
-        auto s = ctx_->stack_pop();
+        /*
+            if (var.val() != 1) {
+                LIGERO_LOG_ERROR
+                    << std::format("Assertion failed: expect 1, got {}",
+           var.val());
+            }
+        */
+        auto s   = ctx_->stack_pop();
         auto wit = ctx_->make_witness(std::move(s));
         ctx_->backend().assert_const(wit, 1);
     }
@@ -67,15 +69,15 @@ struct env_module : public host_module {
         auto wy = ctx_->make_witness(std::move(sy));
 
         if (wx.val() != wy.val()) {
-            LIGERO_LOG_ERROR << "Assertion failed: "
-                             << wx.val() << " != " << wy.val();
+            LIGERO_LOG_ERROR << "Assertion failed: " << wx.val()
+                             << " != " << wy.val();
         }
 
         ctx_->backend().assert_equal(wx, wy);
     }
 
     void assert_constant() {
-        auto s = ctx_->stack_pop();
+        auto s   = ctx_->stack_pop();
         auto wit = ctx_->make_witness(std::move(s));
         ctx_->backend().assert_const(wit, wit.val());
         // ctx_->backend().assert_const(var, mpz_promote(var.val()));
@@ -91,9 +93,9 @@ struct env_module : public host_module {
         u32 len = ctx_->stack_pop().as_u32();
         u32 ptr = ctx_->stack_pop().as_u32();
 
-        address_t addr = ctx_->module()->memaddrs[0];
+        address_t addr        = ctx_->module()->memaddrs[0];
         memory_instance& memi = ctx_->store()->memorys[addr];
-        auto *mem = reinterpret_cast<const unsigned char*>(memi.data.data());
+        auto *mem = reinterpret_cast<const unsigned char *>(memi.data.data());
         // std::cout << "@print str: ";
         // std::cout << std::hex << std::setw(2) << std::setfill('0');
         for (size_t i = 0; i < len; i++) {
@@ -106,15 +108,14 @@ struct env_module : public host_module {
         u32 len = ctx_->stack_pop().as_u32();
         u32 ptr = ctx_->stack_pop().as_u32();
 
-        address_t addr = ctx_->module()->memaddrs[0];
+        address_t addr        = ctx_->module()->memaddrs[0];
         memory_instance& memi = ctx_->store()->memorys[addr];
-        auto *mem = reinterpret_cast<const unsigned char*>(memi.data.data());
+        auto *mem = reinterpret_cast<const unsigned char *>(memi.data.data());
         std::cout << "@dump: ";
 
         std::string tmp;
-        boost::algorithm::hex(mem + ptr,
-                              mem + ptr + len,
-                              std::back_inserter(tmp));
+        boost::algorithm::hex(
+            mem + ptr, mem + ptr + len, std::back_inserter(tmp));
         // std::vector<unsigned char> tmp(mem + ptr, mem + ptr + len);
         std::cout << tmp << std::endl;
         // std::cout << std::hex << std::setw(2) << std::setfill('0');
@@ -127,11 +128,11 @@ struct env_module : public host_module {
     void file_size_get() {
         u64 name_ptr = ctx_->stack_pop().as_u64();
 
-        address_t addr = ctx_->module()->memaddrs[0];
+        address_t addr        = ctx_->module()->memaddrs[0];
         memory_instance& memi = ctx_->store()->memorys[addr];
-        auto *mem = reinterpret_cast<const char*>(memi.data.data());
+        auto *mem = reinterpret_cast<const char *>(memi.data.data());
 
-        std::filesystem::path p{ mem + name_ptr };
+        std::filesystem::path p{mem + name_ptr};
         u32 len = std::filesystem::file_size(p);
         // std::cout << "@file " << p << " size is " << len << std::endl;
         ctx_->stack_push(len);
@@ -141,11 +142,11 @@ struct env_module : public host_module {
         u64 name_ptr = ctx_->stack_pop().as_u64();
         u64 buf_ptr  = ctx_->stack_pop().as_u64();
 
-        address_t addr = ctx_->module()->memaddrs[0];
+        address_t addr        = ctx_->module()->memaddrs[0];
         memory_instance& memi = ctx_->store()->memorys[addr];
-        auto *mem = reinterpret_cast<char*>(memi.data.data());
+        auto *mem             = reinterpret_cast<char *>(memi.data.data());
 
-        std::filesystem::path p{ mem + name_ptr };
+        std::filesystem::path p{mem + name_ptr};
         u32 len = std::filesystem::file_size(p);
 
         std::ifstream ifs(p, std::ios::binary);
@@ -156,18 +157,34 @@ struct env_module : public host_module {
         ctx_->stack_push(len);
     }
 
+    void assert_is_concrete() {
+        auto s = ctx_->stack_pop();
+        if (!s.is_val())
+            throw wasm_trap("assert_is_concrete: value is a witness");
+    }
+
     void i32_private_const() {
-        u32 v = ctx_->stack_pop().as_u32();
+        u32 v  = ctx_->stack_pop().as_u32();
         auto x = ctx_->backend().acquire_witness();
         x.val(v);
-        ctx_->stack_push(std::move(x));
+
+        // Range check: make sure the private input is indeed
+        // a 32 bit number. A bit decomposition does
+        // the job and is cheaper than a comparison.
+        auto range_checked_x = ctx_->backend().bit_decompose(x, 32);
+        ctx_->stack_push(std::move(range_checked_x));
     }
 
     void i64_private_const() {
-        u64 v = ctx_->stack_pop().as_u64();
+        u64 v  = ctx_->stack_pop().as_u64();
         auto x = ctx_->backend().acquire_witness();
         x.val(v);
-        ctx_->stack_push(std::move(x));
+
+        // Range check: make sure the private input is indeed
+        // a 64 bit number. A bit decomposition does
+        // the job and is cheaper than a comparison.
+        auto range_checked_x = ctx_->backend().bit_decompose(x, 64);
+        ctx_->stack_push(std::move(range_checked_x));
     }
 
     void initialize() override {
@@ -178,13 +195,14 @@ struct env_module : public host_module {
             { "assert_constant",   &Self::assert_constant    },
             { "witness_cast_u32",  &Self::witness_cast       },
             { "witness_cast_u64",  &Self::witness_cast       },
+            { "assert_is_concrete", &Self::assert_is_concrete },
             { "i32_private_const", &Self::i32_private_const  },
             { "i64_private_const", &Self::i64_private_const  },
             // { "print",             &Self::print              },
-            { "print_str",         &Self::print_str          },
-            { "dump_memory",       &Self::dump_memory        },
-            { "file_size_get",     &Self::file_size_get      },
-            { "file_get",          &Self::file_get           },
+            {"print_str", &Self::print_str},
+            {"dump_memory", &Self::dump_memory},
+            {"file_size_get", &Self::file_size_get},
+            {"file_get", &Self::file_get},
         };
     }
 
@@ -193,7 +211,7 @@ struct env_module : public host_module {
         return exec_ok();
     }
 
-    void finalize()   override { }
+    void finalize() override {}
 
 protected:
     Context *ctx_;

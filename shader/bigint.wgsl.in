@@ -1,0 +1,452 @@
+/*
+* Copyright (C) 2023-2026 Ligero, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+// Parameters for uint256
+const nail_bytes      : u32 = 4;  // u32
+const nail_bits       : u32 = nail_bytes * 8;
+const num_nails       : u32 = 4;  // uint128 = vec4<u32>
+const limb_bytes      : u32 = nail_bytes * num_nails;
+const limb_bits       : u32 = nail_bits  * num_nails;
+const num_limbs       : u32 = 2;
+const num_wide_limbs  : u32 = num_limbs * 2;
+const num_total_nails : u32 = num_limbs * num_nails;
+const bignum_bytes    : u32 = num_total_nails * nail_bytes;
+
+// u32 extended arithmetic
+struct u32_cc       { sum   : u32,     carry : bool }
+struct u32_wide     { lo    : u32,     hi : u32     }
+// u128 
+alias  uint128 = vec4u;
+struct uint128_cc   { sum   : uint128, carry : bool }
+struct uint128_wide { lo    : uint128, hi : uint128 }
+// arbitraty-precision big integer
+struct bigint       { @align(bignum_bytes) limbs : array<uint128, num_limbs> }
+struct bigint_cc    { sum   : bigint,  carry : bool }
+struct bigint_wide  { lo    : bigint,  hi : bigint  }
+
+// u32 extended arithmetic functions
+// --------------------------------------------------
+
+fn u32_add_cc(a : u32, b : u32) -> u32_cc {
+    let sum   : u32  = a + b;
+    let carry : bool = sum < a;
+    return u32_cc(sum, carry);
+}
+
+fn u32_addc_cc(a : u32, b : u32, carry : bool) -> u32_cc {
+    let cc1 : u32_cc = u32_add_cc(a, b);
+    var cc2 : u32_cc = u32_add_cc(cc1.sum, u32(carry));
+    cc2.carry |= cc1.carry;
+    return cc2;
+}
+
+fn u32_sub_cc(a : u32, b : u32) -> u32_cc {
+    let sub    : u32  = a - b;
+    let borrow : bool = a < b;
+    return u32_cc(sub, borrow);
+}
+
+fn u32_subc_cc(a : u32, b : u32, borrow : bool) -> u32_cc {
+    let cc1 : u32_cc = u32_sub_cc(a, b);
+    var cc2 : u32_cc = u32_sub_cc(cc1.sum, u32(borrow));
+    cc2.carry |= cc1.carry;
+    return cc2;
+}
+
+fn u32_mul_wide(a : u32, b : u32) -> u32_wide {
+    let a_lo : u32 = a & 0xFFFF;
+    let a_hi : u32 = a >> 16;
+    let b_lo : u32 = b & 0xFFFF;
+    let b_hi : u32 = b >> 16;
+
+    let ab_low : u32 = a_lo * b_lo;
+    let ab_mid : u32 = a_lo * b_hi;
+    let ba_mid : u32 = a_hi * b_lo;
+    let ab_high: u32 = a_hi * b_hi;
+    
+    let lo_cc1 : u32_cc = u32_add_cc(ab_low, (ab_mid << 16));
+    let lo_cc2 : u32_cc = u32_add_cc(lo_cc1.sum, (ba_mid << 16));
+
+    let lo : u32 = lo_cc2.sum;
+    let hi : u32 = ab_high + (ab_mid >> 16) + (ba_mid >> 16) 
+                           + u32(lo_cc1.carry) + u32(lo_cc2.carry);
+
+    return u32_wide(lo, hi);
+}
+
+// u128 arithmetic
+// ==================================================
+
+fn uint128_from_u32(x : u32) -> uint128 {
+    return uint128(x, 0u, 0u, 0u);
+}
+
+// Addition
+// --------------------------------------------------
+fn uint128_addu32_cc(a : uint128, b : u32) -> uint128_cc {
+    let cc0 : u32_cc = u32_add_cc(a[0], b);
+    let cc1 : u32_cc = u32_add_cc(a[1], u32(cc0.carry));
+    let cc2 : u32_cc = u32_add_cc(a[2], u32(cc1.carry));
+    let cc3 : u32_cc = u32_add_cc(a[3], u32(cc2.carry));
+    return uint128_cc(uint128(cc0.sum, cc1.sum, cc2.sum, cc3.sum), cc3.carry);
+}
+
+fn uint128_add_cc(a : uint128, b : uint128) -> uint128_cc {
+    var out : uint128    = a + b;
+    let cc  : vec4<bool> = out < a;
+    
+    let cc1 : u32_cc = u32_add_cc(out[1], u32(cc[0]));
+    let cc2 : u32_cc = u32_add_cc(out[2], u32(cc[1] || cc1.carry));
+    let cc3 : u32_cc = u32_add_cc(out[3], u32(cc[2] || cc2.carry));
+
+    out[1] = cc1.sum;
+    out[2] = cc2.sum;
+    out[3] = cc3.sum;
+    return uint128_cc(out, cc[3] || cc3.carry);
+}
+
+fn uint128_addc_cc(a : uint128, b : uint128, carry : bool) -> uint128_cc {
+    var sum : uint128    = a + b;
+    let cc  : vec4<bool> = sum < a;
+    
+    let cc0 : u32_cc = u32_add_cc(sum[0], u32(carry));
+    let cc1 : u32_cc = u32_add_cc(sum[1], u32(cc[0] || cc0.carry));
+    let cc2 : u32_cc = u32_add_cc(sum[2], u32(cc[1] || cc1.carry));
+    let cc3 : u32_cc = u32_add_cc(sum[3], u32(cc[2] || cc2.carry));
+
+    sum[0] = cc0.sum;
+    sum[1] = cc1.sum;
+    sum[2] = cc2.sum;
+    sum[3] = cc3.sum;
+    return uint128_cc(sum, cc[3] || cc3.carry);
+}
+
+// Subtraction
+// --------------------------------------------------
+
+fn uint128_subc_cc(a : uint128, b : uint128, borrow : bool) -> uint128_cc {
+    var sub : uint128    = a - b;
+    let cc  : vec4<bool> = a < b;
+    
+    let cc0 : u32_cc = u32_sub_cc(sub[0], u32(borrow));
+    let cc1 : u32_cc = u32_sub_cc(sub[1], u32(cc[0] || cc0.carry));
+    let cc2 : u32_cc = u32_sub_cc(sub[2], u32(cc[1] || cc1.carry));
+    let cc3 : u32_cc = u32_sub_cc(sub[3], u32(cc[2] || cc2.carry));
+
+    sub[0] = cc0.sum;
+    sub[1] = cc1.sum;
+    sub[2] = cc2.sum;
+    sub[3] = cc3.sum;
+    return uint128_cc(sub, cc[3] || cc3.carry);
+}
+
+// Multplication
+// --------------------------------------------------
+
+fn uint128_mul_lo(a : uint128, b : uint128) -> uint128 {
+    var out : uint128;
+
+    // c0 = a0b0.lo
+    let a0b0 = u32_mul_wide(a[0], b[0]);
+    out[0] = a0b0.lo;
+
+    // c1 = a0b1.lo + a1b0.lo + a0b0.hi
+    let a0b1 : u32_wide = u32_mul_wide(a[0], b[1]);
+    let a1b0 : u32_wide = u32_mul_wide(a[1], b[0]);
+    let cc0  : u32_cc   = u32_add_cc(a0b1.lo, a1b0.lo);
+    let cc1  : u32_cc   = u32_add_cc(cc0.sum, a0b0.hi);
+    out[1] = cc1.sum;
+
+    // c2 = (a0b2.lo + a1b1.lo + a2b0.lo) +
+    //      (a0b1.hi + a1b0.hi)
+    let a0b2 : u32_wide = u32_mul_wide(a[0], b[2]);
+    let a1b1 : u32_wide = u32_mul_wide(a[1], b[1]);
+    let a2b0 : u32_wide = u32_mul_wide(a[2], b[0]);
+    let cc2  : u32_cc   = u32_add_cc(a0b1.hi, a1b0.hi);
+    let cc3  : u32_cc   = u32_add_cc(a0b2.lo, a1b1.lo);
+    let cc4  : u32_cc   = u32_add_cc(a2b0.lo, u32(cc0.carry) + u32(cc1.carry));
+    let cc5  : u32_cc    = u32_add_cc(cc2.sum, cc3.sum);
+    let cc6  : u32_cc    = u32_add_cc(cc4.sum, cc5.sum);
+    out[2] = cc6.sum;
+
+    // c3 = (a0b3 + a1b2 + a2b1 + a3b0) + 
+    //      (a0b2.hi + a1b1.hi + a2b0.hi)
+    let a0b3 : u32 = a[0] * b[3];
+    let a1b2 : u32 = a[1] * b[2];
+    let a2b1 : u32 = a[2] * b[1];
+    let a3b0 : u32 = a[3] * b[0];
+    out[3] = a0b3 + a1b2 + a2b1 + a3b0 + 
+             a0b2.hi + a1b1.hi + a2b0.hi + 
+             u32(cc2.carry) + u32(cc3.carry) + 
+             u32(cc4.carry) + u32(cc5.carry) + u32(cc6.carry);
+
+    return out;
+}
+
+fn uint128_mul_wide(a : uint128, b : uint128) -> uint128_wide {
+    var result : array<u32, 8>;
+    var carry  : u32;
+    for (var b_i : u32 = 0; b_i < 4; b_i++) {
+        {
+            let mul     : u32_wide = u32_mul_wide(a[0], b[b_i]);
+            let sum_acc : u32_cc   = u32_add_cc(mul.lo, result[b_i]);
+            carry       = mul.hi + u32(sum_acc.carry);
+            result[b_i] = sum_acc.sum;
+        }
+        for (var a_i : u32 = 1u; a_i < 4; a_i++) {
+            let mul       : u32_wide = u32_mul_wide(a[a_i], b[b_i]);
+            let sum_carry : u32_cc   = u32_add_cc(mul.lo, carry);
+            let sum_acc   : u32_cc   = u32_add_cc(sum_carry.sum, result[a_i + b_i]);
+            carry             = mul.hi + u32(sum_carry.carry) + u32(sum_acc.carry);  // Impossible to overflow
+            result[a_i + b_i] = sum_acc.sum;
+        }
+        result[b_i + 4] = carry;
+    }
+    return uint128_wide(uint128(result[0], result[1], result[2], result[3]),
+                        uint128(result[4], result[5], result[6], result[7]));
+}
+
+
+// uint128 Comparison
+// --------------------------------------------------
+
+fn uint128_is_zero(x : uint128) -> bool {
+    return all(x == uint128(0u, 0u, 0u, 0u));
+}
+
+// Bigint Arithmetic
+// ==================================================
+
+fn bigint_from_u32(x : u32) -> bigint {
+    var r : bigint;
+    r.limbs[0] = uint128_from_u32(x);
+    return r;
+}
+
+
+// Bigint Addition
+// --------------------------------------------------
+
+fn bigint_add_cc(pa : bigint, pb : bigint) -> bigint_cc {
+    var a   : bigint = pa;
+    var b   : bigint = pb;
+    var out : bigint_cc;
+    for (var i : u32 = 0; i < num_limbs; i++) {
+        let cc = uint128_addc_cc(a.limbs[i], b.limbs[i], out.carry);
+        out.sum.limbs[i] = cc.sum;
+        out.carry = cc.carry;
+    }
+    return out;
+}
+
+fn bigint_add(a : bigint, b : bigint) -> bigint {
+    return bigint_add_cc(a, b).sum;
+}
+
+// Bigint Subtraction
+// --------------------------------------------------
+
+fn bigint_sub_cc(pa : bigint, pb : bigint) -> bigint_cc {
+    var a   : bigint = pa;
+    var b   : bigint = pb;
+    var out : bigint_cc;
+    for (var i :u32 = 0; i < num_limbs; i++) {
+        let cc : uint128_cc = uint128_subc_cc(a.limbs[i], b.limbs[i], out.carry);
+        out.sum.limbs[i] = cc.sum;
+        out.carry = cc.carry;
+    }
+    return out;
+}
+
+fn bigint_sub(a : bigint, b : bigint) -> bigint {
+    return bigint_sub_cc(a, b).sum;
+}
+
+// Bigint Multiplication
+// --------------------------------------------------
+
+fn bigint_mul_lo(pa : bigint, pb : bigint) -> bigint {
+    var a      : bigint = pa;
+    var b      : bigint = pb;
+    var result : bigint;
+    var carry  : uint128;
+    var i      : u32;
+
+    for (var j : u32 = 0; j < num_limbs; j++) {
+        carry = uint128();
+        for (i = 0u; i < (num_limbs - j - 1); i++) {
+            let mul       = uint128_mul_wide(a.limbs[i], b.limbs[j]);
+            let sum_carry = uint128_add_cc(mul.lo,        carry);
+            let sum_acc   = uint128_add_cc(sum_carry.sum, result.limbs[i + j]);
+            // mu.hi can be at most 2^128 - 1, impossible to overflow again
+            let cc        = uint128_addu32_cc(mul.hi, u32(sum_carry.carry || sum_acc.carry));
+            carry         = cc.sum;
+            result.limbs[i + j] = sum_acc.sum;
+        }
+        // Handle the highest part with faster arithmetic
+        let mul : uint128    = uint128_mul_lo(a.limbs[i], b.limbs[j]);
+        let cc  : uint128    = uint128_add_cc(mul, carry).sum;
+        result.limbs[i + j]  = uint128_add_cc(result.limbs[i + j], cc).sum;
+    }
+    return result;
+}
+
+fn bigint_mul_wide(pa : bigint, pb : bigint) -> bigint_wide {
+    var a      : bigint = pa;
+    var b      : bigint = pb;
+    var result : array<uint128, num_wide_limbs>;
+
+    var carry  : uint128;
+    for (var j : u32 = 0; j < num_limbs; j++) {
+        let mul       = uint128_mul_wide(a.limbs[0], b.limbs[j]);
+        let sum_acc   = uint128_add_cc(mul.lo, result[j]);
+        carry         = uint128_addu32_cc(mul.hi, u32(sum_acc.carry)).sum;
+        result[j]     = sum_acc.sum;
+
+        for (var i : u32 = 1; i < num_limbs; i++) {
+            let mul       = uint128_mul_wide(a.limbs[i], b.limbs[j]);
+            let sum_carry = uint128_add_cc(mul.lo,        carry);
+            let sum_acc   = uint128_add_cc(sum_carry.sum, result[i + j]);
+            // mu.hi can be at most 2^128 - 1, impossible to overflow again
+            carry         = uint128_addu32_cc(mul.hi, u32(sum_carry.carry || sum_acc.carry)).sum;
+            result[i + j] = sum_acc.sum;
+        }
+        result[j + num_limbs]  = carry;
+    }
+
+    var wide : bigint_wide;
+    for (var i : u32 = 0; i < num_limbs; i++) {
+        wide.lo.limbs[i] = result[i];
+        wide.hi.limbs[i] = result[i + num_limbs];
+    }
+    return wide;
+}
+
+fn bigint_mul_hi(a : bigint, b : bigint) -> bigint {
+    return bigint_mul_wide(a, b).hi;
+}
+
+// Bigint Comparison
+// --------------------------------------------------
+fn bigint_is_zero(x : bigint) -> bool {
+    var result : bool = true;
+    for (var i : u32 = 0u; i < num_limbs; i++) {
+        result &= uint128_is_zero(x.limbs[i]);
+    }
+    return result;
+}
+
+// Bigint Shift
+// --------------------------------------------------
+
+fn bigint_shl(x : bigint, shift : u32) -> bigint {
+    let global : u32    = shift / nail_bits;
+    let local  : u32    = shift % nail_bits;
+
+    var result : bigint;
+    for (var i : u32 = num_total_nails - 1; i > global; i--) {
+        let out_limb_idx : u32 = i / num_nails;
+        let out_nail_idx : u32 = i % num_nails;
+
+        let hi : u32 = x.limbs[(i - global) / num_nails][(i - global) % num_nails] << local;
+        let lo : u32 = select(0u,
+                        x.limbs[(i - global - 1) / num_nails][(i - global - 1) % num_nails] >> (nail_bits - local),
+                        local > 0);
+        result.limbs[out_limb_idx][out_nail_idx] = hi | lo;
+    }
+
+    let limb_idx : u32 = global / num_nails;
+    let nail_idx : u32 = global % num_nails;
+    result.limbs[limb_idx][nail_idx] = x.limbs[0][0] << local;
+    return result;
+}
+
+fn bigint_shr(x : bigint, shift : u32) -> bigint {
+    let global : u32    = shift / nail_bits;
+    let local  : u32    = shift % nail_bits;
+
+    var result : bigint;
+    for (var i : u32 = 0; i < num_total_nails - global; i++) {
+        let r_global_idx  : u32 = i / num_nails;
+        let r_local_idx   : u32 = i % num_nails;
+        let lo_global_idx : u32 = (i + global) / num_nails;
+        let lo_local_idx  : u32 = (i + global) % num_nails;
+        let hi_global_idx : u32 = (i + global + 1) / num_nails;
+        let hi_local_idx  : u32 = (i + global + 1) % num_nails;
+        let lo : u32 = x.limbs[lo_global_idx][lo_local_idx] >> local;
+        let hi : u32 = select(0u,
+                        x.limbs[hi_global_idx][hi_local_idx] << (nail_bits - local),
+                        local > 0 && (i + global + 1) < num_total_nails);
+        result.limbs[r_global_idx][r_local_idx] = hi | lo;
+    }
+
+    return result;
+}
+
+// Bigint Bit Operation
+// --------------------------------------------------
+
+fn bigint_select_bit(x : bigint, idx : u32) -> u32 {
+    let limb_idx = idx / limb_bits;
+    let nail_idx = (idx % limb_bits) / nail_bits;
+    let bit_idx  = idx % nail_bits;
+    return ((x.limbs[limb_idx][nail_idx] >> bit_idx) & 1u);
+}
+
+fn bigint_set_bit_u32(x : ptr<function, bigint>, idx : u32, val : u32) {
+    let limb_idx = idx / limb_bits;
+    let nail_idx = (idx % limb_bits) / nail_bits;
+    let bit_idx  = idx % nail_bits;
+    (*x).limbs[limb_idx][nail_idx] |= (val & 1u) << bit_idx;
+}
+
+fn bigint_test_bit(x : bigint, idx : u32) -> bool {
+    return bigint_select_bit(x, idx) == 1u;
+}
+
+// Bigint Divison
+// --------------------------------------------------
+
+struct divide_result {
+    q : bigint,
+    r : bigint
+};
+
+fn bigint_divide_qr(n : bigint, d : bigint) -> divide_result {
+    var q : bigint;
+    var r : bigint;
+    var i : i32 = i32(num_limbs * limb_bits - 1);
+
+    for (; i >= 0; i--) {
+        if (bigint_test_bit(n, u32(i))) {
+            break;
+        }
+    }
+
+    for (; i >= 0; i--) {
+        r = bigint_shl(r, 1u);
+        let bit = bigint_select_bit(n, u32(i));
+        bigint_set_bit_u32(&r, 0u, bit);
+
+        let cc = bigint_sub_cc(r, d);
+        if (!cc.carry) {
+            r = bigint_sub(r, d);
+            bigint_set_bit_u32(&q, u32(i), 1u);
+        }
+    }
+
+    return divide_result(q, r);
+}

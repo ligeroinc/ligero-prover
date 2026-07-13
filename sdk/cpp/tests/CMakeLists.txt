@@ -22,6 +22,9 @@ target_link_libraries(uint256_cpp_test ligetron)
 add_executable(prime_field_uint256_test prime_field_uint256_test.cpp)
 target_link_libraries(prime_field_uint256_test ligetron)
 
+add_executable(sha512_test sha512_test.cpp)
+target_link_libraries(sha512_test ligetron)
+
 add_executable(p256_test p256_test.cpp)
 target_link_libraries(p256_test ligetron)
 target_link_options(p256_test PRIVATE "-sSTACK_SIZE=100000000")
@@ -29,3 +32,8 @@ target_link_options(p256_test PRIVATE "-sSTACK_SIZE=100000000")
 add_executable(ecdsa_p256_test ecdsa_p256_test.cpp)
 target_link_libraries(ecdsa_p256_test ligetron)
 target_link_options(ecdsa_p256_test PRIVATE "-sSTACK_SIZE=100000000")
+
+add_executable(ed25519_test ed25519_test.cpp)
+target_link_libraries(ed25519_test ligetron)
+target_link_options(ed25519_test PRIVATE "-sSTACK_SIZE=100000000")
+

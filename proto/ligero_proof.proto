@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package ligero.v1;
+
+import "common.proto";
+import "google/protobuf/timestamp.proto";
+
+// ===================================================================
+// UTILITY MESSAGES
+// ===================================================================
+
+// Wrapper message to support a 2D array for Ligero's matrix columns.
+message FixedU32Vector {
+  // The application layer MUST enforce the fixed size of this vector
+  // based on the specific Ligero matrix parameters.
+  repeated fixed32 values = 1;
+}
+
+// ===================================================================
+// CORE PROOF MESSAGES
+// ===================================================================
+
+// Contextual metadata identifying the proof parameters and generation context.
+message ProofMetadata {
+  string prover_version = 1;
+  uint32 proof_schema_version = 2;
+  ligero.common.v1.ProofType proof_type = 3;
+  ligero.common.v1.HashDigest program_hash = 4;
+  google.protobuf.Timestamp generated_at = 5;
+  uint32 packing_size = 6;
+  uint32 codeword_size = 7;
+  uint32 sample_size = 8;
+  uint32 security_level = 9;
+}
+
+// The payload for a standard Ligero zero-knowledge proof execution.
+message LigeroProof {
+  // The root hash of the Merkle tree committing to the interleaved RS codewords.
+  ligero.common.v1.MerkleDecommitment merkle_tree = 1;
+
+  // Challenges
+  FixedU32Vector encoded_code = 2;
+  FixedU32Vector encoded_linear = 3;
+  FixedU32Vector encoded_quadratic = 4;
+
+  // The sampled witness data in flat row-major layout.
+  // Layout: [Row0Col0..ColT, Row1Col0..ColT, ...] where each element is
+  // a fixed-width field element (e.g. 8 x fixed32 for BN254).
+  FixedU32Vector sampled_data = 5;
+}
+
+// The top-level envelope containing the proof and its routing metadata.
+message LigeroProofEnvelope {
+  ProofMetadata metadata = 1;
+
+  oneof payload {
+    LigeroProof ligero_proof = 2;
+    // PreprocessProof preprocess_proof = 3; (Reserved for future use)
+  }
+}

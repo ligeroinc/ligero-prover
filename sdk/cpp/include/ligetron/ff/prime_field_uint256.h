@@ -44,7 +44,7 @@ class prime_field_uint256_storage {
 
 public:
     /// Constructs storage from limbs
-    prime_field_uint256_storage(bn254fr_t *limbs,
+    prime_field_uint256_storage(const bn254fr_t *limbs,
                                 uint32_t n_limbs,
                                 uint32_t n_bits,
                                 bool is_unsign,
@@ -54,7 +54,7 @@ public:
     }
 
     /// Constructs storage from big integer value
-    prime_field_uint256_storage(bn254fr_bigint val, bool reduced):
+    prime_field_uint256_storage(bn254fr_bigint val, bool reduced = false):
         value_{std::move(val)}, is_reduced_{reduced} {}
 
     /// Constructs storage initialized with zero value
@@ -300,17 +300,18 @@ public:
         }
     }
 
-    static bool eq(const prime_field_uint256_storage &x,
+    static bn254fr_class eq(const prime_field_uint256_storage &x,
                    const prime_field_uint256_storage &y) {
         x.reduce();
         y.reduce();
-        bn254fr_class res = bn254fr_bigint::eq(x.value_, y.value_);
-        auto u64_res = witness_cast_u64(res.get_u64());
-        bn254fr_assert_equal_u64(res.data(), u64_res);
-        return u64_res == 1;
+        return bn254fr_bigint::eq(x.value_, y.value_);
+        // auto u64_res = witness_cast_u64(res.get_u64());
+        // bn254fr_assert_equal_u64(res.data(), u64_res);
+        // return u64_res == 1;
     }
 
     void eqz(bn254fr_class &out) const {
+        reduce();
         out = value_.eqz();
     }
 
@@ -374,6 +375,18 @@ public:
 
     void dump() const {
         value_.dump();
+    }
+
+    size_t import_bytes_little(std::span<const unsigned char> bytes) {
+        value_.set_bytes_little(bytes.data(), bytes.size());
+        is_reduced_ = false;
+        return bytes.size();
+    }
+
+    size_t import_bytes_big(std::span<const unsigned char> bytes) {
+        value_.set_bytes_big(bytes.data(), bytes.size());
+        is_reduced_ = false;
+        return bytes.size();
     }
 
 private:
@@ -590,7 +603,7 @@ struct prime_field_uint256 {
         prime_field_uint256_storage<Derived>::mux(res, cond, a, b);
     }
 
-    static bool eq(const storage_type &x, const storage_type &y) {
+    static auto eq(const storage_type &x, const storage_type &y) {
         return storage_type::eq(x, y);
     }
 
@@ -616,20 +629,12 @@ struct prime_field_uint256 {
 
     static size_t import_bytes_little(storage_type &x,
                                       std::span<const unsigned char> bytes) {
-        uint256 ui;
-        ui.set_bytes_little(bytes.data(), bytes.size());
-        x.set_uint256(ui);
-        reduce(x);
-        return std::min(bytes.size(), size_t{32});
+        return x.import_bytes_little(bytes);
     }
 
     static size_t import_bytes_big(storage_type &x,
                                    std::span<const unsigned char> bytes) {
-        uint256 ui;
-        ui.set_bytes_big(bytes.data(), bytes.size());
-        x.set_uint256(ui);
-        reduce(x);
-        return std::min(bytes.size(), size_t{32});
+        return x.import_bytes_big(bytes);
     }
 
     static size_t import_bytes(storage_type &x,

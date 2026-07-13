@@ -29,7 +29,8 @@ int args_get(char **argv, char *buf);
 /* Assertion */
 LIGETRON_API(env, assert_one)      void assert_one(int);
 LIGETRON_API(env, assert_zero)     void assert_zero(int);
-LIGETRON_API(env, assert_constant) void assert_constant(int);
+LIGETRON_API(env, assert_constant)    void assert_constant(int);
+LIGETRON_API(env, assert_is_concrete) void assert_is_concrete(int);
 
 /* Witness promotion */
 LIGETRON_API(env, witness_cast_u32) uint32_t witness_cast_u32(uint32_t x);
@@ -41,6 +42,30 @@ LIGETRON_API(env, dump_memory)     void dump_memory(const void*, int);
 
 LIGETRON_API(env, file_size_get)   int file_size_get(const char *);
 LIGETRON_API(env, file_get)        int file_get(char *, const char *);
+
+/* Elliptic Curve Orales */
+typedef enum ECCCurveType {
+    ECCCurveType_P256      = 0x00000001,
+    ECCCurveType_Secp256k1 = 0x00000002,
+    ECCCurveType_Ed25519   = 0x00000003,
+    // Placeholder to force the type to be 32-bit
+    ECCCurveType_Force32   = 0x7FFFFFFF
+} ECCCurveType; 
+
+LIGETRON_API(ecc, scalar_decompose)
+void ecc_scalar_decompose(ECCCurveType curve,
+                          void* x_abs_bytes, int* x_positive,
+                          void* z_abs_bytes, int* z_positive,
+                          const void* k_bytes, uint32_t num_k_bytes);
+
+LIGETRON_API(ecc, scalar_mul)
+void ecc_scalar_mul(ECCCurveType curve,
+                    void* q_bytes, const void* p_bytes,
+                    const void* s_bytes, uint32_t num_s_bytes);
+
+LIGETRON_API(ecc, point_decompress)
+int ecc_point_decompress(ECCCurveType curve,
+                         void* x_bytes, void* y_bytes, const void* encoding_bytes);
 
 /* Helpers */
 extern int args_len_get(char **argv, int* arg_len_buf);

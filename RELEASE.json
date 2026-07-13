@@ -1,8 +1,8 @@
 {
-  "version": "v1.4.0",
-  "release_date": "2026-03-05",
-  "private_commit_sha": "3cb3deb07054e48fdf9625754c31ff96e1eba9ca",
+  "version": "v1.5.0",
+  "release_date": "2026-07-13",
+  "private_commit_sha": "de023d774038afaa343a275d001fc0c396b41759",
   "public_repo": "ligeroinc/ligero-prover",
   "source": "Publish Public Release (reusable/manual)",
-  "workflow_run_id": "22700477079"
+  "workflow_run_id": "29271327708"
 }

@@ -21,9 +21,6 @@
 #include <gmp.h>
 #include <gmpxx.h>
 
-#include <boost/serialization/serialization.hpp>
-#include <boost/serialization/split_member.hpp>
-
 namespace ligero::vm {
 
 struct mpz_vector {

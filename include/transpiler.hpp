@@ -57,6 +57,21 @@ value_kind transpile_wabt_type(const wabt::Type& type) {
     }
 }
 
+// wabt changed RefTypeExpr::type from a `wabt::Type` (<= 1.0.34, e.g. the
+// Ubuntu 1.0.34 package used by the Docker build container) to a `wabt::Var`
+// (>= ~1.0.40, e.g. the Homebrew build). Normalize either form to a
+// `wabt::Type` so the transpiler compiles against both. This must be a template
+// with `if constexpr`: a plain overload set would compile every body, and the
+// `Var` body's `.to_type()` does not exist on wabt <= 1.0.34.
+template <typename T>
+wabt::Type ref_type_of(const T& type) {
+    if constexpr (requires { type.to_type(); }) {
+        return type.to_type();   // wabt::Var (>= ~1.0.40)
+    } else {
+        return type;             // wabt::Type (<= 1.0.34)
+    }
+}
+
 // ------------------------------------------------------------
 
 /** Set args[0] = type, args[1] = k */
@@ -532,7 +547,7 @@ std::optional<opcode> transpile_opcode(const wabt::Expr& expr) {
             return opcode(opcode::ref_is_null);
         case wabt::ExprType::RefNull:
             return opcode(opcode::ref_null,
-                          transpile_wabt_type(static_cast<const wabt::RefNullExpr&>(expr).type));
+                          transpile_wabt_type(ref_type_of(static_cast<const wabt::RefNullExpr&>(expr).type)));
         case wabt::ExprType::RefFunc:
             return opcode(opcode::ref_func,
                           static_cast<const wabt::RefFuncExpr&>(expr).var.index());

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en-us" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ligetron Verifier</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <style>
+      .spinner {
+        height: 50px; width: 50px; margin: 0 auto;
+        animation: rotation 0.8s linear infinite;
+        border: 10px solid rgb(0,150,240);
+        border-top-color: rgb(100,0,200);
+        border-radius: 50%;
+        background-color: rgb(200,100,250);
+      }
+      @keyframes rotation { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <div class="container mt-4">
+      <h3>Ligetron Verifier</h3>
+      <hr/>
+
+      <figure style="overflow:visible;" id="spinner"><div class="spinner"></div><center style="margin-top:0.5em"><strong>emscripten</strong></center></figure>
+      <div class="text-center" id="status">Downloading...</div>
+      <div class="text-center">
+        <progress value="0" max="100" id="progress" hidden></progress>
+      </div>
+
+      <div class="mb-3 mt-3">
+        <label for="wasm-file" class="form-label">Load inner WASM program (optional &mdash; overrides embedded program)</label>
+        <input class="form-control" type="file" id="wasm-file" accept=".wasm,application/wasm,*/*">
+      </div>
+
+      <div class="mb-3">
+        <label for="proof-file" class="form-label">Upload proof file (proof_data.gz)</label>
+        <input class="form-control" type="file" id="proof-file" accept=".gz">
+      </div>
+
+      <div class="mb-3">
+        <label for="json-input" class="form-label">JSON config (must match the config used for proving)</label>
+        <textarea class="form-control font-monospace" id="json-input" rows="12">{
+  "program": "payroll_verification.wasm",
+  "shader-path": "shader",
+  "packing": 16384,
+  "private-indices": [],
+  "args": []
+}</textarea>
+      </div>
+
+      <div class="d-flex gap-2 mb-3">
+        <button id="verify-button" type="button" class="btn btn-success" disabled>Verify</button>
+        <a href="webgpu_prover.html" class="btn btn-primary">Open Prover</a>
+        <button id="load-json-button" type="button" class="btn btn-outline-info">Load JSON File</button>
+      </div>
+
+      <hr/>
+      <textarea class="form-control font-monospace" id="output" rows="20" readonly></textarea>
+    </div>
+
+    <!-- Load JSON file from disk -->
+    <script>
+      document.getElementById('load-json-button').addEventListener('click', function() {
+        var input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = function(e) {
+          var reader = new FileReader();
+          reader.onload = function(ev) {
+            document.getElementById('json-input').value = ev.target.result;
+          };
+          reader.readAsText(e.target.files[0]);
+        };
+        input.click();
+      });
+    </script>
+
+    <!-- Upload inner WASM into Emscripten VFS -->
+    <script>
+      document.getElementById('wasm-file').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+          var data = new Uint8Array(ev.target.result);
+          FS.writeFile('/' + file.name, data);
+          appendOutput('[UI] Loaded ' + file.name + ' (' + data.length + ' bytes) into VFS');
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    </script>
+
+    <!-- Upload proof file into Emscripten VFS -->
+    <script>
+      document.getElementById('proof-file').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+          var data = new Uint8Array(ev.target.result);
+          FS.writeFile('/proof_data.gz', data);
+          appendOutput('[UI] Loaded proof (' + data.length + ' bytes) into VFS');
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    </script>
+
+    <!-- Verify button -->
+    <script>
+      var verifyRunning = false;
+      document.getElementById('verify-button').addEventListener('click', async function() {
+        if (verifyRunning) return;
+        var jsonStr = document.getElementById('json-input').value.trim();
+        try {
+          JSON.parse(jsonStr);
+        } catch (err) {
+          alert('Invalid JSON: ' + err.message);
+          return;
+        }
+
+        // Check that proof file was uploaded
+        try {
+          FS.stat('/proof_data.gz');
+        } catch (err) {
+          alert('Please upload a proof file (proof_data.gz) first.');
+          return;
+        }
+
+        verifyRunning = true;
+        var btn = document.getElementById('verify-button');
+        btn.disabled = true;
+        appendOutput('[UI] Starting verification...');
+        try {
+          await Module.callMain([jsonStr]);
+          appendOutput('[UI] Verification finished.');
+        } catch (error) {
+          if (typeof ExitStatus !== 'undefined' && error instanceof ExitStatus) {
+            if (error.status !== 0) {
+              appendOutput('[UI] Verification exited with code ' + error.status);
+            } else {
+              appendOutput('[UI] Verification finished.');
+            }
+          } else {
+            appendOutput('[UI] Error: ' + (error.message || error));
+          }
+        } finally {
+          verifyRunning = false;
+          btn.disabled = false;
+        }
+      });
+    </script>
+
+    <!-- Emscripten Module setup -->
+    <script type='text/javascript'>
+      var statusElement = document.getElementById('status');
+      var progressElement = document.getElementById('progress');
+      var spinnerElement = document.getElementById('spinner');
+
+      function appendOutput(text) {
+        var el = document.getElementById('output');
+        el.value += text + '\n';
+        el.scrollTop = el.scrollHeight;
+      }
+
+      var Module = {
+        print: (function() {
+          var element = document.getElementById('output');
+          if (element) element.value = '';
+          return (...args) => {
+            var text = args.join(' ');
+            console.log(text);
+            if (element) {
+              element.value += text + '\n';
+              element.scrollTop = element.scrollHeight;
+            }
+          };
+        })(),
+        setStatus: (text) => {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.last.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Module.setStatus.last.time < 30) return;
+          Module.setStatus.last.time = now;
+          Module.setStatus.last.text = text;
+          if (m) {
+            text = m[1];
+            progressElement.value = parseInt(m[2]) * 100;
+            progressElement.max = parseInt(m[4]) * 100;
+            progressElement.hidden = false;
+            spinnerElement.hidden = false;
+          } else {
+            progressElement.value = null;
+            progressElement.max = null;
+            progressElement.hidden = true;
+            if (!text) spinnerElement.hidden = true;
+          }
+          statusElement.innerHTML = text;
+        },
+        noExitRuntime: true,
+        onRuntimeInitialized: function() {
+          document.getElementById('verify-button').disabled = false;
+          appendOutput('[UI] Runtime ready.');
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: (left) => {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+      window.onerror = () => {
+        Module.setStatus('Exception thrown, see JavaScript console');
+        spinnerElement.style.display = 'none';
+      };
+    </script>
+    {{{ SCRIPT }}}
+  </body>
+</html>

@@ -49,7 +49,7 @@ public:
     bn254fr_bigint(uint32_t n_limbs, uint64_t val);
 
     /// Constructs big integer from bn254fr limbs, adds equality constraints.
-    bn254fr_bigint(bn254fr_t *limbs,
+    bn254fr_bigint(const bn254fr_t *limbs,
                    uint32_t n_limbs,
                    uint32_t n_bits,
                    bool is_unsign);
@@ -122,6 +122,12 @@ public:
     /// Converts big integer value to overflow representation with
     /// specified number of limbs n_bits bits each.
     bn254fr_bigint to_overflow(uint32_t n_limbs, uint32_t n_bits) const;
+
+    /// Sets big integer value from bytes in little endian, adds constraints
+    void set_bytes_little(const unsigned char *bytes, uint32_t sz);
+
+    /// Sets big integer value from bytes in big endian, adds constraints
+    void set_bytes_big(const unsigned char *bytes, uint32_t sz);
 
     /// Returns bn254 one value if this value is zero,
     /// zero bn254 value otherwise. Adds constraints.

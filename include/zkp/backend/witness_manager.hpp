@@ -402,7 +402,6 @@ struct witness_manager {
         witness_add_random(k, *rand);
 
         mpz_assign(*tmp, v);
-        assert(*k.value_ptr() == *tmp);
 
         Field::mulmod(*tmp, *tmp, *rand);
         constsum_sub(*tmp);

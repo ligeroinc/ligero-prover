@@ -25,10 +25,6 @@
 #include <gmp.h>
 #include <gmpxx.h>
 
-#include <boost/serialization/serialization.hpp>
-#include <boost/serialization/split_free.hpp>
-#include <boost/serialization/split_member.hpp>
-
 namespace ligero::vm::zkp {
 
 struct bn254_gmp {
@@ -39,7 +35,7 @@ struct bn254_gmp {
     constexpr static size_t num_bytes         = num_rounded_bits / 8;
     constexpr static size_t num_u32_limbs     = 8;
     constexpr static size_t num_u64_limbs     = 4;
-    constexpr static size_t num_native_limbs  = num_bytes / sizeof(void*);
+
 
     static value_type modulus;
     static value_type modulus_2x;
@@ -146,9 +142,6 @@ struct bn254_gmp {
 
     void reset() { data_ = 0; }
 
-    explicit operator unsigned long() const {
-        return mpz_get_ui(data_.get_mpz_t());
-    }
 
     bn254_gmp& operator+=(const bn254_gmp& other) {
         addmod(data_, data_, other.data_);
@@ -202,26 +195,6 @@ struct bn254_gmp {
     void to_limbs(uint64_t *buf) const {
         mpz_export(buf, nullptr, -1, sizeof(uint64_t), 0, 0, data_.get_mpz_t());
     }
-
-    template <typename Archive>
-    void save(Archive& ar, const unsigned int) const {
-        uint64_t buf[num_u64_limbs]{};
-
-        to_limbs(buf);
-        
-        ar & buf;
-    }
-
-    template <typename Archive>
-    void load(Archive& ar, const unsigned int) {
-        uint64_t buf[num_u64_limbs]{};
-
-        ar & buf;
-
-        from_limbs(buf);
-    }
-
-    BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 protected:
     mpz_class data_;
@@ -361,7 +334,7 @@ struct field_poly {
             mpz_export(limbs.data() + i * num_limbs,
                        nullptr,
                        -1,             // Least significant first
-                       sizeof(void*),  // Use native word size
+                       sizeof(uint32_t),
                        -1,             // Little endian
                        0,              // Skip 0
                        data_[i].data().get_mpz_t());
@@ -374,13 +347,11 @@ struct field_poly {
             allocate(N);
         }
 
-        const size_t num_import_words = num_limbs * sizeof(uint32_t) / sizeof(void*);
-
         for (size_t i = 0; i < N; i++) {
             mpz_import(data_[i].data().get_mpz_t(),
-                       num_import_words,
+                       num_limbs,
                        -1,
-                       sizeof(void*),
+                       sizeof(uint32_t),
                        0,
                        0,
                        limbs + i * num_limbs);
@@ -518,29 +489,6 @@ struct field_poly {
 
     inline const auto* data() const { return data_.get(); }
     inline auto* data() { return data_.get(); }
-
-    template <typename Archive>
-    void save(Archive& ar, const unsigned int) const {
-        ar & size_;
-
-        for (size_t i = 0; i < size_; i++) {
-            ar & data_[i];
-        }
-    }
-
-    template <typename Archive>
-    void load(Archive& ar, const unsigned int) {
-        size_t len;
-        ar & len;
-
-        allocate(len);
-        size_ = len;
-        for (size_t i = 0; i < size_; i++) {
-            ar & data_[i];
-        }
-    }
-
-    BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 protected:
     size_t capacity_;

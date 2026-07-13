@@ -30,7 +30,7 @@ namespace ligetron {
 
 /// Verifies ECDSA signature
 template <ec::detail::EllipticCurve EC>
-bool ecdsa_verify(const typename EC::scalar_field_element &msg_hash,
+auto ecdsa_verify(const typename EC::scalar_field_element &msg_hash,
                   const typename EC::scalar_field_element &r,
                   const typename EC::scalar_field_element &s,
                   typename EC::point &pub_key) {
@@ -61,7 +61,7 @@ bool ecdsa_verify(const typename EC::scalar_field_element &msg_hash,
 
 /// Verifies ECDSA signature for message hash as binary data
 template <ec::detail::EllipticCurve EC>
-bool ecdsa_verify(std::span<const unsigned char> msg_hash_data,
+auto ecdsa_verify(std::span<const unsigned char> msg_hash_data,
                   const typename EC::scalar_field_element &r,
                   const typename EC::scalar_field_element &s,
                   typename EC::point &pub_key) {

@@ -92,13 +92,6 @@ struct merkle_tree {
 
         const auto& operator[](size_t i) const { return nodes_.at(i); }
 
-        template <typename Archive>
-        void serialize(Archive& ar, const unsigned int) {
-            ar & total_count_;
-            ar & known_index_;
-            ar & nodes_;
-        }
-        
     protected:
         size_t total_count_;
         std::vector<size_t> known_index_;

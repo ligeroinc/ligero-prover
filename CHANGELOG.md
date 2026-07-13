@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0](https://github.com/ligeroinc/ligetron/compare/v1.4.0...v1.5.0) (2026-07-09)
+
+
+### Features
+
+* add web demo templates with per-target Emscripten shell files ([#315](https://github.com/ligeroinc/ligetron/issues/315)) ([435600e](https://github.com/ligeroinc/ligetron/commit/435600e0faa70bd30d3dd77d8011dc461c1795bf))
+* **core:** migrate proof serialization from Boost to Protocol Buffers ([#310](https://github.com/ligeroinc/ligetron/issues/310)) ([5034d25](https://github.com/ligeroinc/ligetron/commit/5034d25ef384cbcedb626f00d21db2963f40de89))
+* **sdk:** implement fast Ed25519 EdDSA signature verification using MSM trick ([#380](https://github.com/ligeroinc/ligetron/issues/380)) ([3fb806a](https://github.com/ligeroinc/ligetron/commit/3fb806a03bbf928f52fbbef311a2b2c7ab6401ca))
+* **sdk:** Optimize scalar version of "poseidon_s" by using "mulmod_constant" in permutation ([#371](https://github.com/ligeroinc/ligetron/issues/371)) ([ebdceab](https://github.com/ligeroinc/ligetron/commit/ebdceaba5c1e299586c97b45c5a4890d3e6512dd))
+* **sdk:** Rewrite P256/Secp256k1 ECDSA as MSM for performance and soundness ([#367](https://github.com/ligeroinc/ligetron/issues/367)) ([d90586d](https://github.com/ligeroinc/ligetron/commit/d90586d113dd4d7000a41a5545538cd551b5665a))
+
+
+### Bug Fixes
+
+* "weierstrass_affine_curve" - fixed "point_add" ([ad3a795](https://github.com/ligeroinc/ligetron/commit/ad3a7950c82115bc4520befe17934adb7319fecb))
+* **core:** add merkle root to stage2 fiat-shamir & remove fiat-shamir seed from proof ([321dff7](https://github.com/ligeroinc/ligetron/commit/321dff74e2cda22566032cf432650bd53332ea99))
+* **core:** add missing constraints for div/rem and private inputs ([511a1aa](https://github.com/ligeroinc/ligetron/commit/511a1aafe01d1852477f78ef01b56fbc90919ea5))
+* **core:** deterministic linear commitment order across C++ stdlibs ([#374](https://github.com/ligeroinc/ligetron/issues/374)) ([#375](https://github.com/ligeroinc/ligetron/issues/375)) ([53115d7](https://github.com/ligeroinc/ligetron/commit/53115d7b76eb1370cdb9ee3f93b0662dab2a7110))
+* **core:** include public inputs in stage1 seed generation ([bfc0010](https://github.com/ligeroinc/ligetron/commit/bfc00103b4dd6f6548cd6915ed86f313060a8e67))
+* Fixed "bn254fr_to_bytes" for big-endian order ([050a7f1](https://github.com/ligeroinc/ligetron/commit/050a7f1355c310690ed1085cc584f6c7ba87d673))
+* **interpreter:** clear secret tags in memory.fill and memory.init ([#313](https://github.com/ligeroinc/ligetron/issues/313)) ([#327](https://github.com/ligeroinc/ligetron/issues/327)) ([612668a](https://github.com/ligeroinc/ligetron/commit/612668a2422098339bd8340c87639eefd91b6638))
+* resolve remaining 32-bit WASM vs 64-bit native divergences ([#312](https://github.com/ligeroinc/ligetron/issues/312)) ([#328](https://github.com/ligeroinc/ligetron/issues/328)) ([c4c9e67](https://github.com/ligeroinc/ligetron/commit/c4c9e67d72b45ae2ef79a9deecb9d017ad843262))
+* **sdk:** fix incorrect generator precompute table values ([06508d6](https://github.com/ligeroinc/ligetron/commit/06508d6eb5da07fa4989350a7e48d8c16e642d0c))
+* **tests:** point shader-path at build directory after PR [#333](https://github.com/ligeroinc/ligetron/issues/333) ([#342](https://github.com/ligeroinc/ligetron/issues/342)) ([48f66d1](https://github.com/ligeroinc/ligetron/commit/48f66d1890b61925a8e0f4b1caaee9d9a4145a65))
+* **webgpu:** add sha256 shader to CMake dependency list ([d5c585f](https://github.com/ligeroinc/ligetron/commit/d5c585f6392c58ac503d4c8a1c377e03eb0758f1))
+* **webgpu:** improve CMake behaviors ([6682453](https://github.com/ligeroinc/ligetron/commit/66824539d91fd1f32dfd7283775e80ca98a2b8d7))
+
 ## [1.4.0](https://github.com/ligeroinc/ligetron/compare/v1.3.1...v1.4.0) (2026-03-03)
 
 

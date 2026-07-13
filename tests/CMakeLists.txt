@@ -25,14 +25,14 @@ foreach(TEST_FILE ${TEST_FILES})
         add_test(
             NAME ${TEST_NAME}
             COMMAND node ${CMAKE_BINARY_DIR}/webgpu_prover.js "{\"program\":\"${CMAKE_SOURCE_DIR}/tests/${TEST_NAME}\", \
-                                          \"shader-path\": \"${CMAKE_SOURCE_DIR}/shader\"}"
+                                          \"shader-path\": \"${CMAKE_BINARY_DIR}/shader\"}"
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}  # Not ${CMAKE_BINARY_DIR}/tests!
         )
     else()
         add_test(
             NAME ${TEST_NAME}
             COMMAND webgpu_prover "{\"program\":\"${CMAKE_SOURCE_DIR}/tests/${TEST_NAME}\", \
-                                    \"shader-path\": \"${CMAKE_SOURCE_DIR}/shader\"}"
+                                    \"shader-path\": \"${CMAKE_BINARY_DIR}/shader\"}"
         )
     endif()
 endforeach()

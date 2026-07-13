@@ -16,8 +16,8 @@
 
 #pragma once
 
-#include <runtime.hpp>
 #include <opcode.hpp>
+#include <runtime.hpp>
 
 #include <bit>
 #include <cmath>
@@ -29,27 +29,25 @@ namespace {
 // Floating-point bounds for integer truncation range checks.
 // These are the exact power-of-two boundaries beyond which a float/double
 // cannot be safely converted to the corresponding integer type.
-constexpr double kI32Range  = 2147483648.0;            // 2^31
-constexpr double kU32Range  = 4294967296.0;             // 2^32
-constexpr double kI64Range  = 9223372036854775808.0;    // 2^63
-constexpr double kU64Range  = 18446744073709551616.0;   // 2^64
+constexpr double kI32Range = 2147483648.0;           // 2^31
+constexpr double kU32Range = 4294967296.0;           // 2^32
+constexpr double kI64Range = 9223372036854775808.0;  // 2^63
+constexpr double kU64Range = 18446744073709551616.0; // 2^64
 } // namespace
 
 void undefined(opcode code) {
-    std::cout << "Undefined instruction: " << opcode::to_string(code.tag) << std::endl;
+    std::cout << "Undefined instruction: " << opcode::to_string(code.tag)
+              << std::endl;
     throw wasm_trap("Undefined");
 }
 
 template <typename Context>
 struct opcode_interpreter {
-    using var = typename Context::witness_type;
+    using var         = typename Context::witness_type;
     using opcode_func = exec_result (opcode_interpreter::*)(opcode);
 
     opcode_interpreter(Context& ctx)
-        : ctx_(ctx),
-          backend_(ctx.backend()),
-          opcode_counter_{}
-        { }
+        : ctx_(ctx), backend_(ctx.backend()), opcode_counter_{} {}
 
     void increase_opcode_count(opcode c) { ++opcode_counter_[c.tag]; }
 
@@ -60,18 +58,21 @@ struct opcode_interpreter {
         for (size_t i = 0; i < opcode::total_size; ++i) {
             if (opcode_counter_[i] > 0) {
                 if (i < opcode::local_get) {
-                    compute_entries.emplace_back(static_cast<opcode::kind>(i), opcode_counter_[i]);
-                }
-                else {
-                    control_entries.emplace_back(static_cast<opcode::kind>(i), opcode_counter_[i]);
+                    compute_entries.emplace_back(static_cast<opcode::kind>(i),
+                                                 opcode_counter_[i]);
+                } else {
+                    control_entries.emplace_back(static_cast<opcode::kind>(i),
+                                                 opcode_counter_[i]);
                 }
             }
         }
 
         // Sort descending by count
-        std::sort(compute_entries.begin(), compute_entries.end(),
+        std::sort(compute_entries.begin(),
+                  compute_entries.end(),
                   [](auto a, auto b) { return a.second > b.second; });
-        std::sort(control_entries.begin(), control_entries.end(),
+        std::sort(control_entries.begin(),
+                  control_entries.end(),
                   [](auto a, auto b) { return a.second > b.second; });
 
         // Print table
@@ -84,8 +85,9 @@ struct opcode_interpreter {
             std::cout << std::setw(24) << std::left << opcode::to_string(op)
                       << ": " << count << "\n";
         }
-        std::cout << std::setw(24) << std::left
-                  << "Subtotal" << ": " << subtotal << std::endl << std::endl;
+        std::cout << std::setw(24) << std::left << "Subtotal" << ": "
+                  << subtotal << std::endl
+                  << std::endl;
 
         subtotal = 0;
 
@@ -96,9 +98,8 @@ struct opcode_interpreter {
             std::cout << std::setw(24) << std::left << opcode::to_string(op)
                       << ": " << count << "\n";
         }
-        std::cout << std::setw(24) << std::left
-                  << "Subtotal" << ": " << subtotal << std::endl;
-
+        std::cout << std::setw(24) << std::left << "Subtotal" << ": "
+                  << subtotal << std::endl;
     }
 
     exec_result exec_unreachable(opcode ins) {
@@ -106,9 +107,7 @@ struct opcode_interpreter {
         throw wasm_trap("Unreachable");
     }
 
-    exec_result exec_nop(opcode) {
-        return exec_ok();
-    }
+    exec_result exec_nop(opcode) { return exec_ok(); }
 
     exec_result exec_drop(opcode ins) {
         ctx_.stack_pop();
@@ -122,19 +121,18 @@ struct opcode_interpreter {
         if (sc.is_val()) {
             if (sc.as_u32()) {
                 ctx_.drop_n_below(1, 0);
-            }
-            else {
+            } else {
                 ctx_.drop_n_below(1, 1);
             }
-        }
-        else {
+        } else {
             /** Compare the i32 condition with 0, then select! */
-            auto c = ctx_.make_decomposed(std::move(sc), 32); // condition is always i32
+            auto c = ctx_.make_decomposed(std::move(sc),
+                                          32); // condition is always i32
             auto f = ctx_.make_witness(ctx_.stack_pop());
             auto t = ctx_.make_witness(ctx_.stack_pop());
 
             auto is_zero = backend_.bitwise_eqz(c);
-            auto v = ctx_.backend().eval(is_zero * f + ~is_zero * t);
+            auto v       = ctx_.backend().eval(is_zero * f + ~is_zero * t);
 
             ctx_.stack_push(std::move(v));
         }
@@ -147,8 +145,7 @@ struct opcode_interpreter {
         if (type == value_kind::i32) {
             u32 c = static_cast<u32>(k);
             ctx_.stack_push(c);
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             ctx_.stack_push(k);
         }
@@ -165,8 +162,7 @@ struct opcode_interpreter {
         if (auto *p = sx.get_if_numeric()) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(std::countl_zero(p->as_u32()));
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(std::countl_zero(p->as_u64()));
             }
@@ -178,16 +174,17 @@ struct opcode_interpreter {
         size_t num_bits = num_bits_of_kind(type);
         size_t msb      = num_bits - 1;
 
-        auto bits       = ctx_.make_decomposed(std::move(sx), num_bits);
-        var acc         = backend_.eval(~bits[msb]);
-        var continue_   = backend_.duplicate(acc);
+        auto bits     = ctx_.make_decomposed(std::move(sx), num_bits);
+        var acc       = backend_.eval(~bits[msb]);
+        var continue_ = backend_.duplicate(acc);
 
         for (int i = msb - 1; i >= 0; i--) {
             continue_ = backend_.eval(continue_ & ~bits[i]);
-            acc  = backend_.eval(acc + continue_);
+            acc       = backend_.eval(acc + continue_);
         }
 
-        // assert(static_cast<u64>(acc.val()) == std::countl_zero(static_cast<u64>(x.val())));
+        // assert(static_cast<u64>(acc.val()) ==
+        // std::countl_zero(static_cast<u64>(x.val())));
 
         ctx_.stack_push(std::move(acc));
         return exec_ok();
@@ -195,15 +192,14 @@ struct opcode_interpreter {
 
     exec_result exec_inn_ctz(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         if (auto *p = sx.get_if_numeric()) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(std::countr_zero(p->as_u32()));
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(std::countr_zero(p->as_u64()));
             }
@@ -213,7 +209,7 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         size_t num_bits = num_bits_of_kind(type);
-        size_t msb = num_bits - 1;
+        size_t msb      = num_bits - 1;
 
         auto bits = ctx_.make_decomposed(std::move(sx), num_bits);
         var acc   = backend_.eval(~bits[0]);
@@ -223,7 +219,8 @@ struct opcode_interpreter {
             acc  = backend_.eval(acc + cont);
         }
 
-        // assert(static_cast<u64>(acc.val()) == std::countr_zero(static_cast<u64>(x.val())));
+        // assert(static_cast<u64>(acc.val()) ==
+        // std::countr_zero(static_cast<u64>(x.val())));
 
         ctx_.stack_push(std::move(acc));
 
@@ -232,15 +229,14 @@ struct opcode_interpreter {
 
     exec_result exec_inn_popcnt(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         if (auto *p = sx.get_if_numeric()) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(std::popcount(p->as_u32()));
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(std::popcount(p->as_u64()));
             }
@@ -250,16 +246,17 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        size_t msb = num_bits - 1;
+        size_t msb            = num_bits - 1;
 
         auto bits = ctx_.make_decomposed(std::move(sx), num_bits);
 
-        auto acc  = backend_.eval(0u);
+        auto acc = backend_.eval(0u);
         for (int i = 0; i < num_bits; i++) {
             acc = backend_.eval(acc + bits[i]);
         }
 
-        // assert(static_cast<u64>(acc.val()) == std::popcount(static_cast<u64>(x.val())));
+        // assert(static_cast<u64>(acc.val()) ==
+        // std::popcount(static_cast<u64>(x.val())));
 
         ctx_.stack_push(std::move(acc));
         return exec_ok();
@@ -267,8 +264,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_add(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -277,8 +274,7 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() + py->as_u32());
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() + py->as_u64());
             }
@@ -287,7 +283,7 @@ struct opcode_interpreter {
 
         // ------------------------------------------------------------
 
-        const size_t num_bits = num_bits_of_kind(type);
+        const size_t num_bits            = num_bits_of_kind(type);
         const size_t num_overflowed_bits = num_bits + 1;
 
         auto x = ctx_.make_witness(std::move(sx));
@@ -303,8 +299,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_sub(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -313,8 +309,7 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() - py->as_u32());
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() - py->as_u64());
             }
@@ -333,13 +328,12 @@ struct opcode_interpreter {
             bits.drop_msb(1);
 
             ctx_.stack_push(std::move(bits));
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
 
             // x - y mod 2^64 := 2^64 - y + x
             mpz_class *pow = backend_.manager().acquire_mpz();
-            *pow = 1;
+            *pow           = 1;
             *pow <<= 64;
 
             auto overflowed = backend_.eval(*pow - y + x);
@@ -356,8 +350,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_mul(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -366,8 +360,7 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() * py->as_u32());
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() * py->as_u64());
             }
@@ -386,8 +379,7 @@ struct opcode_interpreter {
             bits.drop_msb(32);
 
             ctx_.stack_push(std::move(bits));
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
 
             auto big_result = backend_.eval(x * y);
@@ -402,8 +394,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_div_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -412,21 +404,20 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u32>(static_cast<s32>(px->as_u32()) /
-                                                     static_cast<s32>(py->as_u32())));
-                }
-                else {
+                    ctx_.stack_push(
+                        static_cast<u32>(static_cast<s32>(px->as_u32()) /
+                                         static_cast<s32>(py->as_u32())));
+                } else {
                     assert(sign == sign_kind::unsign);
                     ctx_.stack_push(px->as_u32() / py->as_u32());
                 }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u64>(static_cast<s64>(px->as_u64()) /
-                                                     static_cast<s64>(py->as_u64())));
-                }
-                else {
+                    ctx_.stack_push(
+                        static_cast<u64>(static_cast<s64>(px->as_u64()) /
+                                         static_cast<s64>(py->as_u64())));
+                } else {
                     assert(sign == sign_kind::unsign);
                     ctx_.stack_push(px->as_u64() / py->as_u64());
                 }
@@ -436,8 +427,8 @@ struct opcode_interpreter {
 
         // ------------------------------------------------------------
 
-        const size_t num_bits = num_bits_of_kind(type);
-        const size_t msb = num_bits - 1;
+        const size_t num_bits            = num_bits_of_kind(type);
+        const size_t msb                 = num_bits - 1;
         const size_t num_overflowed_bits = num_bits + 1;
 
         auto x = ctx_.make_witness(std::move(sx));
@@ -448,16 +439,23 @@ struct opcode_interpreter {
             auto by = backend_.bit_decompose(y, num_bits);
 
             mpz_class *pow = backend_.manager().acquire_mpz();
-            *pow = 1;
+            *pow           = 1;
             *pow <<= num_bits;
             auto abs_x = backend_.eval(bx[msb] * (*pow - x) + ~bx[msb] * x);
             auto abs_y = backend_.eval(by[msb] * (*pow - y) + ~by[msb] * y);
 
             auto [q, r] = backend_.idivide_qr(abs_x, abs_y);
 
+            {
+                // Range check: make sure the quotient is indeed
+                // a 32/64 bit number. A bit decomposition does
+                // the job and is cheaper than a comparison.
+                auto decomposed_q = backend_.bit_decompose(q, num_bits);
+            }
+
             auto abs_y_bit = backend_.bit_decompose(abs_y, num_bits);
             auto br        = backend_.bit_decompose(r, num_bits);
-            auto [gt, eq] = backend_.bitwise_gt(abs_y_bit, br, sign);
+            auto [gt, eq]  = backend_.bitwise_gt(abs_y_bit, br, sign);
 
             backend_.assert_const(gt, 1);
             backend_.assert_const(eq, 0);
@@ -473,15 +471,21 @@ struct opcode_interpreter {
             backend_.manager().recycle_mpz(pow);
 
             ctx_.stack_push(std::move(res_q));
-        }
-        else {
+        } else {
             assert(sign == sign_kind::unsign);
             auto [q, r] = backend_.idivide_qr(x, y);
 
+            {
+                // Range check: make sure the quotient is indeed
+                // a 32/64 bit number. A bit decomposition does
+                // the job and is cheaper than a comparison.
+                auto decomposed_q = backend_.bit_decompose(q, num_bits);
+            }
+
             auto by = backend_.bit_decompose(y, num_bits);
             auto br = backend_.bit_decompose(r, num_bits);
-            auto [gt, eq] = backend_.bitwise_gt(by, br, sign);
 
+            auto [gt, eq] = backend_.bitwise_gt(by, br, sign);
             backend_.assert_const(gt, 1);
             backend_.assert_const(eq, 0);
 
@@ -494,8 +498,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_rem_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -504,20 +508,19 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u32>(static_cast<s32>(px->as_u32()) %
-                                                     static_cast<s32>(py->as_u32())));
-                }
-                else {
+                    ctx_.stack_push(
+                        static_cast<u32>(static_cast<s32>(px->as_u32()) %
+                                         static_cast<s32>(py->as_u32())));
+                } else {
                     ctx_.stack_push(px->as_u32() % py->as_u32());
                 }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u64>(static_cast<s64>(px->as_u64()) %
-                                                     static_cast<s64>(py->as_u64())));
-                }
-                else {
+                    ctx_.stack_push(
+                        static_cast<u64>(static_cast<s64>(px->as_u64()) %
+                                         static_cast<s64>(py->as_u64())));
+                } else {
                     ctx_.stack_push(px->as_u64() % py->as_u64());
                 }
             }
@@ -526,8 +529,8 @@ struct opcode_interpreter {
 
         // ------------------------------------------------------------
 
-        const size_t num_bits = num_bits_of_kind(type);
-        const size_t msb = num_bits - 1;
+        const size_t num_bits            = num_bits_of_kind(type);
+        const size_t msb                 = num_bits - 1;
         const size_t num_overflowed_bits = num_bits + 1;
 
         auto x = ctx_.make_witness(std::move(sx));
@@ -538,21 +541,28 @@ struct opcode_interpreter {
             auto by = backend_.bit_decompose(y, num_bits);
 
             mpz_class *pow = backend_.manager().acquire_mpz();
-            *pow = 1;
+            *pow           = 1;
             *pow <<= num_bits;
             auto abs_x = backend_.eval(bx[msb] * (*pow - x) + ~bx[msb] * x);
             auto abs_y = backend_.eval(by[msb] * (*pow - y) + ~by[msb] * y);
 
             auto [q, r] = backend_.idivide_qr(abs_x, abs_y);
 
+            {
+                // Range check: make sure the quotient is indeed
+                // a 32/64 bit number. A bit decomposition does
+                // the job and is cheaper than a comparison.
+                auto decomposed_q = backend_.bit_decompose(q, num_bits);
+            }
+
             auto abs_y_bit = backend_.bit_decompose(abs_y, num_bits);
             auto br        = backend_.bit_decompose(r, num_bits);
-            auto [gt, eq] = backend_.bitwise_gt(abs_y_bit, br, sign);
+            auto [gt, eq]  = backend_.bitwise_gt(abs_y_bit, br, sign);
 
             backend_.assert_const(gt, 1);
             backend_.assert_const(eq, 0);
 
-            auto ovf_r = backend_.eval(*pow - r);
+            auto ovf_r  = backend_.eval(*pow - r);
             auto bneg_r = backend_.bit_decompose(ovf_r, num_overflowed_bits);
             bneg_r.drop_msb(1);
             auto neg_r = backend_.bit_compose(bneg_r);
@@ -561,12 +571,18 @@ struct opcode_interpreter {
             backend_.manager().recycle_mpz(pow);
 
             ctx_.stack_push(std::move(res_r));
-        }
-        else {
+        } else {
             auto [q, r] = backend_.idivide_qr(x, y);
 
-            auto by = backend_.bit_decompose(y, num_bits);
-            auto br = backend_.bit_decompose(r, num_bits);
+            {
+                // Range check: make sure the quotient is indeed
+                // a 32/64 bit number. A bit decomposition does
+                // the job and is cheaper than a comparison.
+                auto decomposed_q = backend_.bit_decompose(q, num_bits);
+            }
+
+            auto by       = backend_.bit_decompose(y, num_bits);
+            auto br       = backend_.bit_decompose(r, num_bits);
             auto [gt, eq] = backend_.bitwise_gt(by, br, sign);
 
             backend_.assert_const(gt, 1);
@@ -580,8 +596,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_and(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -590,8 +606,7 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() & py->as_u32());
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() & py->as_u64());
             }
@@ -616,8 +631,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_or(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -626,8 +641,7 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() | py->as_u32());
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() | py->as_u64());
             }
@@ -648,15 +662,15 @@ struct opcode_interpreter {
         ctx_.stack_push(std::move(out));
 
         // std::cout << "or ";
-        // std::cout << " " << x.val() << " " << y.val() << " " << acc.val() << std::endl;
-        // ctx_.show_stack();
+        // std::cout << " " << x.val() << " " << y.val() << " " << acc.val() <<
+        // std::endl; ctx_.show_stack();
         return exec_ok();
     }
 
     exec_result exec_inn_xor(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -665,8 +679,7 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() ^ py->as_u32());
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() ^ py->as_u64());
             }
@@ -692,14 +705,14 @@ struct opcode_interpreter {
 
     exec_result exec_inn_shl(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto shift = ctx_.stack_pop();
-        auto sx    = ctx_.stack_pop();
+        auto shift                       = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         size_t num_bits = num_bits_of_kind(type);
-        u32 n = ctx_.make_numeric(std::move(shift)).as_u32();
-        n = n % num_bits;
+        u32 n           = ctx_.make_numeric(std::move(shift)).as_u32();
+        n               = n % num_bits;
 
         // ------------------------------------------------------------
 
@@ -708,8 +721,7 @@ struct opcode_interpreter {
         if (px) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(px->as_u32() << n);
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(px->as_u64() << n);
             }
@@ -735,14 +747,14 @@ struct opcode_interpreter {
 
     exec_result exec_inn_shr_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto shift = ctx_.stack_pop();
-        auto sx    = ctx_.stack_pop();
+        auto shift                       = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         size_t num_bits = num_bits_of_kind(type);
         size_t msb      = num_bits - 1;
-        u32    n        = ctx_.make_numeric(std::move(shift)).as_u32();
+        u32 n           = ctx_.make_numeric(std::move(shift)).as_u32();
 
         n = n % num_bits;
 
@@ -755,18 +767,15 @@ struct opcode_interpreter {
                 if (sign == sign_kind::sign) {
                     ctx_.stack_push(
                         static_cast<u32>(static_cast<s32>(px->as_u32()) >> n));
-                }
-                else {
+                } else {
                     ctx_.stack_push(px->as_u32() >> n);
                 }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
                     ctx_.stack_push(
                         static_cast<u64>(static_cast<s64>(px->as_u64()) >> n));
-                }
-                else {
+                } else {
                     ctx_.stack_push(px->as_u64() >> n);
                 }
             }
@@ -782,8 +791,7 @@ struct opcode_interpreter {
             auto pad = backend_.duplicate(x[msb]);
             x.drop_lsb(n);
             x.push_msb(pad, n);
-        }
-        else {
+        } else {
             auto zero = backend_.eval(0u);
             x.drop_lsb(n);
             x.push_msb(zero, n);
@@ -795,14 +803,14 @@ struct opcode_interpreter {
 
     exec_result exec_inn_rotl(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto shift = ctx_.stack_pop();
-        auto sx    = ctx_.stack_pop();
+        auto shift                       = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         size_t num_bits = num_bits_of_kind(type);
-        u32 n = ctx_.make_numeric(std::move(shift)).as_u32();
-        n = n % num_bits;
+        u32 n           = ctx_.make_numeric(std::move(shift)).as_u32();
+        n               = n % num_bits;
 
         // ------------------------------------------------------------
 
@@ -811,8 +819,7 @@ struct opcode_interpreter {
         if (px) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(std::rotl(px->as_u32(), n));
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(std::rotl(px->as_u64(), n));
             }
@@ -838,14 +845,14 @@ struct opcode_interpreter {
 
     exec_result exec_inn_rotr(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto shift = ctx_.stack_pop();
-        auto sx    = ctx_.stack_pop();
+        auto shift                       = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         size_t num_bits = num_bits_of_kind(type);
         size_t msb      = num_bits - 1;
-        u32    n        = ctx_.make_numeric(std::move(shift)).as_u32();
+        u32 n           = ctx_.make_numeric(std::move(shift)).as_u32();
 
         n = n % num_bits;
 
@@ -856,8 +863,7 @@ struct opcode_interpreter {
         if (px) {
             if (type == value_kind::i32) {
                 ctx_.stack_push(std::rotr(px->as_u32(), n));
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 ctx_.stack_push(std::rotr(px->as_u64(), n));
             }
@@ -882,17 +888,16 @@ struct opcode_interpreter {
 
     exec_result exec_inn_eqz(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         if (auto *p = sx.get_if_numeric()) {
             if (type == value_kind::i32) {
-                ctx_.stack_push(u32{ p->as_u32() == 0U });
-            }
-            else {
+                ctx_.stack_push(u32{p->as_u32() == 0U});
+            } else {
                 assert(type == value_kind::i64);
-                ctx_.stack_push(u64{ p->as_u64() == 0ULL });
+                ctx_.stack_push(u64{p->as_u64() == 0ULL});
             }
             return exec_ok();
         }
@@ -900,7 +905,7 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
 
         auto acc = backend_.eval(~x[0]);
         for (size_t i = 1; i < num_bits; i++) {
@@ -913,20 +918,19 @@ struct opcode_interpreter {
 
     exec_result exec_inn_eq(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
-            // ------------------------------------------------------------
+        // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
         auto *py = sy.get_if_numeric();
 
         if (px && py) {
             if (type == value_kind::i32) {
-                ctx_.stack_push(u32{ px->as_u32() == py->as_u32() });
-            }
-            else {
+                ctx_.stack_push(u32{px->as_u32() == py->as_u32()});
+            } else {
                 assert(type == value_kind::i64);
-                ctx_.stack_push(u32{ px->as_u64() == py->as_u64() });
+                ctx_.stack_push(u32{px->as_u64() == py->as_u64()});
             }
             return exec_ok();
         }
@@ -934,8 +938,8 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
-        auto y = ctx_.make_decomposed(std::move(sy), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto y                = ctx_.make_decomposed(std::move(sy), num_bits);
 
         auto eq = backend_.bitwise_eq(x, y);
 
@@ -945,8 +949,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_ne(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -954,11 +958,10 @@ struct opcode_interpreter {
 
         if (px && py) {
             if (type == value_kind::i32) {
-                ctx_.stack_push(u32{ px->as_u32() != py->as_u32() });
-            }
-            else {
+                ctx_.stack_push(u32{px->as_u32() != py->as_u32()});
+            } else {
                 assert(type == value_kind::i64);
-                ctx_.stack_push(u32{ px->as_u64() != py->as_u64() });
+                ctx_.stack_push(u32{px->as_u64() != py->as_u64()});
             }
             return exec_ok();
         }
@@ -966,8 +969,8 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
-        auto y = ctx_.make_decomposed(std::move(sy), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto y                = ctx_.make_decomposed(std::move(sy), num_bits);
 
         auto neq = backend_.eval(~backend_.bitwise_eq(x, y));
 
@@ -977,8 +980,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_lt_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -987,19 +990,22 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u32>(static_cast<s32>(px->as_u32()) < static_cast<s32>(py->as_u32())));
+                    ctx_.stack_push(
+                        static_cast<u32>(static_cast<s32>(px->as_u32()) <
+                                         static_cast<s32>(py->as_u32())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u32>(px->as_u32() < py->as_u32()));
                 }
-                else {
-                    ctx_.stack_push(static_cast<u32>(px->as_u32() < py->as_u32()));
-                }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u64>(static_cast<s64>(px->as_u64()) < static_cast<s64>(py->as_u64())));
-                }
-                else {
-                    ctx_.stack_push(static_cast<u64>(px->as_u64() < py->as_u64()));
+                    ctx_.stack_push(
+                        static_cast<u64>(static_cast<s64>(px->as_u64()) <
+                                         static_cast<s64>(py->as_u64())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u64>(px->as_u64() < py->as_u64()));
                 }
             }
             return exec_ok();
@@ -1008,11 +1014,11 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
-        auto y = ctx_.make_decomposed(std::move(sy), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto y                = ctx_.make_decomposed(std::move(sy), num_bits);
 
         auto [gt, eq] = backend_.bitwise_gt(x, y, sign);
-        auto lt = backend_.eval(~(gt + eq));
+        auto lt       = backend_.eval(~(gt + eq));
 
         ctx_.stack_push(std::move(lt));
         return exec_ok();
@@ -1020,8 +1026,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_gt_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -1030,19 +1036,22 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u32>(static_cast<s32>(px->as_u32()) > static_cast<s32>(py->as_u32())));
+                    ctx_.stack_push(
+                        static_cast<u32>(static_cast<s32>(px->as_u32()) >
+                                         static_cast<s32>(py->as_u32())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u32>(px->as_u32() > py->as_u32()));
                 }
-                else {
-                    ctx_.stack_push(static_cast<u32>(px->as_u32() > py->as_u32()));
-                }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u64>(static_cast<s64>(px->as_u64()) > static_cast<s64>(py->as_u64())));
-                }
-                else {
-                    ctx_.stack_push(static_cast<u64>(px->as_u64() > py->as_u64()));
+                    ctx_.stack_push(
+                        static_cast<u64>(static_cast<s64>(px->as_u64()) >
+                                         static_cast<s64>(py->as_u64())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u64>(px->as_u64() > py->as_u64()));
                 }
             }
             return exec_ok();
@@ -1051,8 +1060,8 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
-        auto y = ctx_.make_decomposed(std::move(sy), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto y                = ctx_.make_decomposed(std::move(sy), num_bits);
 
         auto [gt, _] = backend_.bitwise_gt(x, y, sign);
 
@@ -1062,8 +1071,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_le_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -1072,19 +1081,22 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u32>(static_cast<s32>(px->as_u32()) <= static_cast<s32>(py->as_u32())));
+                    ctx_.stack_push(
+                        static_cast<u32>(static_cast<s32>(px->as_u32()) <=
+                                         static_cast<s32>(py->as_u32())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u32>(px->as_u32() <= py->as_u32()));
                 }
-                else {
-                    ctx_.stack_push(static_cast<u32>(px->as_u32() <= py->as_u32()));
-                }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u64>(static_cast<s64>(px->as_u64()) <= static_cast<s64>(py->as_u64())));
-                }
-                else {
-                    ctx_.stack_push(static_cast<u64>(px->as_u64() <= py->as_u64()));
+                    ctx_.stack_push(
+                        static_cast<u64>(static_cast<s64>(px->as_u64()) <=
+                                         static_cast<s64>(py->as_u64())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u64>(px->as_u64() <= py->as_u64()));
                 }
             }
             return exec_ok();
@@ -1093,11 +1105,11 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
-        auto y = ctx_.make_decomposed(std::move(sy), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto y                = ctx_.make_decomposed(std::move(sy), num_bits);
 
         auto [gt, _] = backend_.bitwise_gt(x, y, sign);
-        auto le = backend_.eval(~gt);
+        auto le      = backend_.eval(~gt);
 
         ctx_.stack_push(std::move(le));
         return exec_ok();
@@ -1105,8 +1117,8 @@ struct opcode_interpreter {
 
     exec_result exec_inn_ge_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
         auto *px = sx.get_if_numeric();
@@ -1115,19 +1127,22 @@ struct opcode_interpreter {
         if (px && py) {
             if (type == value_kind::i32) {
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u32>(static_cast<s32>(px->as_u32()) >= static_cast<s32>(py->as_u32())));
+                    ctx_.stack_push(
+                        static_cast<u32>(static_cast<s32>(px->as_u32()) >=
+                                         static_cast<s32>(py->as_u32())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u32>(px->as_u32() >= py->as_u32()));
                 }
-                else {
-                    ctx_.stack_push(static_cast<u32>(px->as_u32() >= py->as_u32()));
-                }
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
                 if (sign == sign_kind::sign) {
-                    ctx_.stack_push(static_cast<u64>(static_cast<s64>(px->as_u64()) >= static_cast<s64>(py->as_u64())));
-                }
-                else {
-                    ctx_.stack_push(static_cast<u64>(px->as_u64() >= py->as_u64()));
+                    ctx_.stack_push(
+                        static_cast<u64>(static_cast<s64>(px->as_u64()) >=
+                                         static_cast<s64>(py->as_u64())));
+                } else {
+                    ctx_.stack_push(
+                        static_cast<u64>(px->as_u64() >= py->as_u64()));
                 }
             }
             return exec_ok();
@@ -1136,11 +1151,11 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto x = ctx_.make_decomposed(std::move(sx), num_bits);
-        auto y = ctx_.make_decomposed(std::move(sy), num_bits);
+        auto x                = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto y                = ctx_.make_decomposed(std::move(sy), num_bits);
 
         auto [gt, eq] = backend_.bitwise_gt(x, y, sign);
-        auto ge = backend_.eval(gt + eq);
+        auto ge       = backend_.eval(gt + eq);
 
         ctx_.stack_push(std::move(ge));
         return exec_ok();
@@ -1148,18 +1163,19 @@ struct opcode_interpreter {
 
     exec_result exec_inn_extend8_s(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         if (auto *p = sx.get_if_numeric()) {
             if (type == value_kind::i32) {
-                u32 result = static_cast<s32>(static_cast<signed char>(p->as_u32()));
+                u32 result =
+                    static_cast<s32>(static_cast<signed char>(p->as_u32()));
                 ctx_.stack_push(result);
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
-                u64 result = static_cast<s64>(static_cast<signed char>(p->as_u64()));
+                u64 result =
+                    static_cast<s64>(static_cast<signed char>(p->as_u64()));
                 ctx_.stack_push(result);
             }
             return exec_ok();
@@ -1168,7 +1184,7 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto bits = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto bits             = ctx_.make_decomposed(std::move(sx), num_bits);
         bits.drop_msb(num_bits - 8);
 
         for (size_t i = 8; i < num_bits; i++) {
@@ -1181,18 +1197,19 @@ struct opcode_interpreter {
 
     exec_result exec_inn_extend16_s(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
         if (auto *p = sx.get_if_numeric()) {
             if (type == value_kind::i32) {
-                u32 result = static_cast<s32>(static_cast<int16_t>(p->as_u32()));
+                u32 result =
+                    static_cast<s32>(static_cast<int16_t>(p->as_u32()));
                 ctx_.stack_push(result);
-            }
-            else {
+            } else {
                 assert(type == value_kind::i64);
-                u64 result = static_cast<s64>(static_cast<uint16_t>(p->as_u64()));
+                u64 result =
+                    static_cast<s64>(static_cast<uint16_t>(p->as_u64()));
                 ctx_.stack_push(result);
             }
             return exec_ok();
@@ -1201,7 +1218,7 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         const size_t num_bits = num_bits_of_kind(type);
-        auto bits = ctx_.make_decomposed(std::move(sx), num_bits);
+        auto bits             = ctx_.make_decomposed(std::move(sx), num_bits);
         bits.drop_msb(num_bits - 16);
 
         for (size_t i = 16; i < num_bits; i++) {
@@ -1219,7 +1236,7 @@ struct opcode_interpreter {
         // ------------------------------------------------------------
 
         if (auto *p = sx.get_if_numeric()) {
-            u32 mask = p->as_u64() & 0xFFFFFFFFu;
+            u32 mask   = p->as_u64() & 0xFFFFFFFFu;
             u64 result = static_cast<s32>(mask);
             ctx_.stack_push(result);
             return exec_ok();
@@ -1240,7 +1257,7 @@ struct opcode_interpreter {
 
     exec_result exec_i64_extend_i32_sx(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
 
         // ------------------------------------------------------------
 
@@ -1248,8 +1265,7 @@ struct opcode_interpreter {
             if (sign == sign_kind::sign) {
                 u64 result = static_cast<s64>(static_cast<s32>(p->as_u32()));
                 ctx_.stack_push(result);
-            }
-            else {
+            } else {
                 u64 result = p->as_u32();
                 ctx_.stack_push(result);
             }
@@ -1264,8 +1280,7 @@ struct opcode_interpreter {
             for (u32 i = 32; i < 64; i++) {
                 bits.push_back(backend_.duplicate(bits[31]));
             }
-        }
-        else {
+        } else {
             auto zero = backend_.eval(0u);
             bits.push_msb(zero, 32);
         }
@@ -1294,7 +1309,6 @@ struct opcode_interpreter {
         return exec_ok();
     }
 
-
     // ------------------------------------------------------------
 
     exec_result exec_fnn_const(opcode ins) {
@@ -1313,8 +1327,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_eq(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(static_cast<u32>(sx.as_f32() == sy.as_f32()));
         } else {
@@ -1325,8 +1339,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_ne(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(static_cast<u32>(sx.as_f32() != sy.as_f32()));
         } else {
@@ -1337,8 +1351,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_lt(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(static_cast<u32>(sx.as_f32() < sy.as_f32()));
         } else {
@@ -1349,8 +1363,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_gt(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(static_cast<u32>(sx.as_f32() > sy.as_f32()));
         } else {
@@ -1361,8 +1375,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_le(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(static_cast<u32>(sx.as_f32() <= sy.as_f32()));
         } else {
@@ -1373,8 +1387,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_ge(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(static_cast<u32>(sx.as_f32() >= sy.as_f32()));
         } else {
@@ -1385,7 +1399,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_abs(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::fabs(sx.as_f32()));
         } else {
@@ -1396,7 +1410,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_neg(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(-sx.as_f32());
         } else {
@@ -1407,7 +1421,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_ceil(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::ceil(sx.as_f32()));
         } else {
@@ -1418,7 +1432,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_floor(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::floor(sx.as_f32()));
         } else {
@@ -1429,7 +1443,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_trunc(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::trunc(sx.as_f32()));
         } else {
@@ -1440,7 +1454,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_nearest(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::nearbyint(sx.as_f32()));
         } else {
@@ -1451,7 +1465,7 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_sqrt(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sx = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::sqrt(sx.as_f32()));
         } else {
@@ -1462,8 +1476,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_add(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(sx.as_f32() + sy.as_f32());
         } else {
@@ -1474,8 +1488,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_sub(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(sx.as_f32() - sy.as_f32());
         } else {
@@ -1486,8 +1500,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_mul(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(sx.as_f32() * sy.as_f32());
         } else {
@@ -1498,8 +1512,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_div(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(sx.as_f32() / sy.as_f32());
         } else {
@@ -1510,8 +1524,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_min(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             float x = sx.as_f32(), y = sy.as_f32();
             if (std::isnan(x) || std::isnan(y))
@@ -1530,8 +1544,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_max(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             float x = sx.as_f32(), y = sy.as_f32();
             if (std::isnan(x) || std::isnan(y))
@@ -1550,8 +1564,8 @@ struct opcode_interpreter {
 
     exec_result exec_fnn_copysign(opcode ins) {
         auto [type, sign, align, offset] = decode_opcode(ins);
-        auto sy = ctx_.stack_pop();
-        auto sx = ctx_.stack_pop();
+        auto sy                          = ctx_.stack_pop();
+        auto sx                          = ctx_.stack_pop();
         if (type == value_kind::f32) {
             ctx_.stack_push(std::copysign(sx.as_f32(), sy.as_f32()));
         } else {
@@ -1644,7 +1658,6 @@ struct opcode_interpreter {
         return exec_ok();
     }
 
-
     exec_result exec_i32_trunc_f32_s(opcode ins) {
         auto sx = ctx_.stack_pop();
         float v = sx.as_f32();
@@ -1664,7 +1677,7 @@ struct opcode_interpreter {
     }
 
     exec_result exec_i32_trunc_f64_s(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         if (std::isnan(v) || v >= kI32Range || v < -kI32Range)
             throw wasm_trap("integer overflow");
@@ -1673,7 +1686,7 @@ struct opcode_interpreter {
     }
 
     exec_result exec_i32_trunc_f64_u(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         if (std::isnan(v) || v >= kU32Range || v <= -1.0)
             throw wasm_trap("integer overflow");
@@ -1700,7 +1713,7 @@ struct opcode_interpreter {
     }
 
     exec_result exec_i64_trunc_f64_s(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         if (std::isnan(v) || v >= kI64Range || v < -kI64Range)
             throw wasm_trap("integer overflow");
@@ -1709,7 +1722,7 @@ struct opcode_interpreter {
     }
 
     exec_result exec_i64_trunc_f64_u(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         if (std::isnan(v) || v >= kU64Range || v <= -1.0)
             throw wasm_trap("integer overflow");
@@ -1717,15 +1730,18 @@ struct opcode_interpreter {
         return exec_ok();
     }
 
-
     exec_result exec_i32_trunc_sat_f32_s(opcode ins) {
         auto sx = ctx_.stack_pop();
         float v = sx.as_f32();
         int32_t r;
-        if (std::isnan(v)) r = 0;
-        else if (v >= kI32Range) r = std::numeric_limits<int32_t>::max();
-        else if (v < -kI32Range) r = std::numeric_limits<int32_t>::min();
-        else r = static_cast<int32_t>(std::trunc(v));
+        if (std::isnan(v))
+            r = 0;
+        else if (v >= kI32Range)
+            r = std::numeric_limits<int32_t>::max();
+        else if (v < -kI32Range)
+            r = std::numeric_limits<int32_t>::min();
+        else
+            r = static_cast<int32_t>(std::trunc(v));
         ctx_.stack_push(static_cast<u32>(r));
         return exec_ok();
     }
@@ -1734,32 +1750,42 @@ struct opcode_interpreter {
         auto sx = ctx_.stack_pop();
         float v = sx.as_f32();
         u32 r;
-        if (std::isnan(v) || v <= -1.0f) r = 0;
-        else if (v >= kU32Range) r = std::numeric_limits<u32>::max();
-        else r = static_cast<u32>(std::trunc(v));
+        if (std::isnan(v) || v <= -1.0f)
+            r = 0;
+        else if (v >= kU32Range)
+            r = std::numeric_limits<u32>::max();
+        else
+            r = static_cast<u32>(std::trunc(v));
         ctx_.stack_push(r);
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_sat_f64_s(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         int32_t r;
-        if (std::isnan(v)) r = 0;
-        else if (v >= kI32Range) r = std::numeric_limits<int32_t>::max();
-        else if (v < -kI32Range) r = std::numeric_limits<int32_t>::min();
-        else r = static_cast<int32_t>(std::trunc(v));
+        if (std::isnan(v))
+            r = 0;
+        else if (v >= kI32Range)
+            r = std::numeric_limits<int32_t>::max();
+        else if (v < -kI32Range)
+            r = std::numeric_limits<int32_t>::min();
+        else
+            r = static_cast<int32_t>(std::trunc(v));
         ctx_.stack_push(static_cast<u32>(r));
         return exec_ok();
     }
 
     exec_result exec_i32_trunc_sat_f64_u(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         u32 r;
-        if (std::isnan(v) || v <= -1.0) r = 0;
-        else if (v >= kU32Range) r = std::numeric_limits<u32>::max();
-        else r = static_cast<u32>(std::trunc(v));
+        if (std::isnan(v) || v <= -1.0)
+            r = 0;
+        else if (v >= kU32Range)
+            r = std::numeric_limits<u32>::max();
+        else
+            r = static_cast<u32>(std::trunc(v));
         ctx_.stack_push(r);
         return exec_ok();
     }
@@ -1768,10 +1794,14 @@ struct opcode_interpreter {
         auto sx = ctx_.stack_pop();
         float v = sx.as_f32();
         int64_t r;
-        if (std::isnan(v)) r = 0;
-        else if (v >= kI64Range) r = std::numeric_limits<int64_t>::max();
-        else if (v < -kI64Range) r = std::numeric_limits<int64_t>::min();
-        else r = static_cast<int64_t>(std::trunc(v));
+        if (std::isnan(v))
+            r = 0;
+        else if (v >= kI64Range)
+            r = std::numeric_limits<int64_t>::max();
+        else if (v < -kI64Range)
+            r = std::numeric_limits<int64_t>::min();
+        else
+            r = static_cast<int64_t>(std::trunc(v));
         ctx_.stack_push(static_cast<u64>(r));
         return exec_ok();
     }
@@ -1780,32 +1810,42 @@ struct opcode_interpreter {
         auto sx = ctx_.stack_pop();
         float v = sx.as_f32();
         u64 r;
-        if (std::isnan(v) || v <= -1.0f) r = 0;
-        else if (v >= kU64Range) r = std::numeric_limits<u64>::max();
-        else r = static_cast<u64>(std::trunc(v));
+        if (std::isnan(v) || v <= -1.0f)
+            r = 0;
+        else if (v >= kU64Range)
+            r = std::numeric_limits<u64>::max();
+        else
+            r = static_cast<u64>(std::trunc(v));
         ctx_.stack_push(r);
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_sat_f64_s(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         int64_t r;
-        if (std::isnan(v)) r = 0;
-        else if (v >= kI64Range) r = std::numeric_limits<int64_t>::max();
-        else if (v < -kI64Range) r = std::numeric_limits<int64_t>::min();
-        else r = static_cast<int64_t>(std::trunc(v));
+        if (std::isnan(v))
+            r = 0;
+        else if (v >= kI64Range)
+            r = std::numeric_limits<int64_t>::max();
+        else if (v < -kI64Range)
+            r = std::numeric_limits<int64_t>::min();
+        else
+            r = static_cast<int64_t>(std::trunc(v));
         ctx_.stack_push(static_cast<u64>(r));
         return exec_ok();
     }
 
     exec_result exec_i64_trunc_sat_f64_u(opcode ins) {
-        auto sx = ctx_.stack_pop();
+        auto sx  = ctx_.stack_pop();
         double v = sx.as_f64();
         u64 r;
-        if (std::isnan(v) || v <= -1.0) r = 0;
-        else if (v >= kU64Range) r = std::numeric_limits<u64>::max();
-        else r = static_cast<u64>(std::trunc(v));
+        if (std::isnan(v) || v <= -1.0)
+            r = 0;
+        else if (v >= kU64Range)
+            r = std::numeric_limits<u64>::max();
+        else
+            r = static_cast<u64>(std::trunc(v));
         ctx_.stack_push(r);
         return exec_ok();
     }
@@ -1818,12 +1858,13 @@ struct opcode_interpreter {
 
         auto& local = cf->locals[x];
 
-        ctx_.stack_push(std::visit(prelude::overloaded {
+        ctx_.stack_push(std::visit(
+            prelude::overloaded{
                 [](std::unique_ptr<wasm_frame>& v) -> stack_value {
                     throw wasm_trap("local_get: Unexpected frame pointer");
                 },
-                [](auto& x) { return stack_value{ x }; }
-            }, local.data()));
+                [](auto& x) { return stack_value{x}; }},
+            local.data()));
 
         // ctx_.show_stack();
         return exec_ok();
@@ -1844,13 +1885,14 @@ struct opcode_interpreter {
         auto [x] = decode_index(ins);
         auto *cf = ctx_.current_frame();
 
-        auto& v = ctx_.stack_peek();
-        cf->locals[x] = std::visit(prelude::overloaded {
-                    [](std::unique_ptr<wasm_frame>& v) -> stack_value {
-                        throw wasm_trap("local_tee: Unexpected frame pointer");
-                    },
-                    [](auto& x) { return stack_value{ x }; }
-                }, v.data());
+        auto& v       = ctx_.stack_peek();
+        cf->locals[x] = std::visit(
+            prelude::overloaded{
+                [](std::unique_ptr<wasm_frame>& v) -> stack_value {
+                    throw wasm_trap("local_tee: Unexpected frame pointer");
+                },
+                [](auto& x) { return stack_value{x}; }},
+            v.data());
 
         // std::cout << "local.tee[" << x << "]" << std::endl;
         // ctx_.show_stack();
@@ -1858,9 +1900,9 @@ struct opcode_interpreter {
     }
 
     exec_result exec_global_get(opcode ins) {
-        auto [x] = decode_index(ins);
-        auto *cf = ctx_.current_frame();
-        address_t a = cf->module->globaladdrs[x];
+        auto [x]                    = decode_index(ins);
+        auto *cf                    = ctx_.current_frame();
+        address_t a                 = cf->module->globaladdrs[x];
         const global_instance& glob = ctx_.store()->globals[a];
 
         ctx_.stack_push(glob.val);
@@ -1870,19 +1912,17 @@ struct opcode_interpreter {
     }
 
     exec_result exec_global_set(opcode ins) {
-        auto [x] = decode_index(ins);
-        address_t a = ctx_.current_frame()->module->globaladdrs[x];
+        auto [x]              = decode_index(ins);
+        address_t a           = ctx_.current_frame()->module->globaladdrs[x];
         global_instance& glob = ctx_.store()->globals[a];
-        auto val = ctx_.stack_pop().as_numeric();
+        auto val              = ctx_.stack_pop().as_numeric();
 
         glob.val = val;
 
         return exec_ok();
     }
 
-
     // ------------------------------------------------------------
-
 
     exec_result exec_ref_null(opcode) {
         ctx_.stack_push(reference_t{});
@@ -1891,28 +1931,26 @@ struct opcode_interpreter {
 
     exec_result exec_ref_is_null(opcode) {
         reference_t val = ctx_.stack_pop().as_ref();
-        u32 is_null = !val;
+        u32 is_null     = !val;
         ctx_.stack_push(is_null);
         return exec_ok();
     }
 
     exec_result exec_ref_func(opcode ins) {
-        auto [i] = decode_index(ins);
-        auto f = ctx_.current_frame();
+        auto [i]    = decode_index(ins);
+        auto f      = ctx_.current_frame();
         address_t a = f->module->funcaddrs[i];
-        ctx_.stack_push(reference_t{ a });
+        ctx_.stack_push(reference_t{a});
         return exec_ok();
     }
 
-
     // ------------------------------------------------------------
-
 
     exec_result exec_table_get(opcode ins) {
         auto [x] = decode_index(ins);
 
-        auto f = ctx_.current_frame();
-        address_t addr = f->module->tableaddrs[x];
+        auto f              = ctx_.current_frame();
+        address_t addr      = f->module->tableaddrs[x];
         table_instance& tab = ctx_.store()->tables[addr];
 
         u32 i = ctx_.stack_pop().as_u32();
@@ -1929,12 +1967,12 @@ struct opcode_interpreter {
     exec_result exec_table_set(opcode ins) {
         auto [x] = decode_index(ins);
 
-        auto f = ctx_.current_frame();
-        address_t addr = f->module->tableaddrs[x];
+        auto f              = ctx_.current_frame();
+        address_t addr      = f->module->tableaddrs[x];
         table_instance& tab = ctx_.store()->tables[addr];
 
         reference_t val = ctx_.stack_pop().as_ref();
-        u32 i = ctx_.stack_pop().as_u32();
+        u32 i           = ctx_.stack_pop().as_u32();
 
         if (i >= tab.elem.size()) {
             throw wasm_trap("table_get: index out of range");
@@ -1947,8 +1985,8 @@ struct opcode_interpreter {
     exec_result exec_table_size(opcode ins) {
         auto [x] = decode_index(ins);
 
-        auto f = ctx_.current_frame();
-        address_t addr = f->module->tableaddrs[x];
+        auto f              = ctx_.current_frame();
+        address_t addr      = f->module->tableaddrs[x];
         table_instance& tab = ctx_.store()->tables[addr];
 
         u32 sz = tab.elem.size();
@@ -1959,12 +1997,12 @@ struct opcode_interpreter {
     exec_result exec_table_grow(opcode ins) {
         auto [x] = decode_index(ins);
 
-        auto f = ctx_.current_frame();
-        address_t addr = f->module->tableaddrs[x];
+        auto f              = ctx_.current_frame();
+        address_t addr      = f->module->tableaddrs[x];
         table_instance& tab = ctx_.store()->tables[addr];
 
-        u32 sz = tab.elem.size();
-        u32 n = ctx_.stack_pop().as_u32();
+        u32 sz          = tab.elem.size();
+        u32 n           = ctx_.stack_pop().as_u32();
         reference_t val = ctx_.stack_pop().as_ref();
 
         try {
@@ -1973,8 +2011,7 @@ struct opcode_interpreter {
                 tab.elem.push_back(val);
             }
             ctx_.stack_push(sz);
-        }
-        catch (...) {
+        } catch (...) {
             ctx_.stack_push(static_cast<u32>(-1));
         }
 
@@ -1984,13 +2021,13 @@ struct opcode_interpreter {
     exec_result exec_table_fill(opcode ins) {
         auto [x] = decode_index(ins);
 
-        auto f = ctx_.current_frame();
-        address_t ta = f->module->tableaddrs[x];
+        auto f              = ctx_.current_frame();
+        address_t ta        = f->module->tableaddrs[x];
         table_instance& tab = ctx_.store()->tables[ta];
 
-        u32 n = ctx_.stack_pop().as_u32();
+        u32 n           = ctx_.stack_pop().as_u32();
         reference_t val = ctx_.stack_pop().as_ref();
-        u32 i = ctx_.stack_pop().as_u32();
+        u32 i           = ctx_.stack_pop().as_u32();
 
         if (i + n > tab.elem.size()) {
             throw wasm_trap("table_fill: index out of bound");
@@ -2006,9 +2043,9 @@ struct opcode_interpreter {
     exec_result exec_table_copy(opcode ins) {
         auto [dst, src] = decode_index2(ins);
 
-        auto f = ctx_.current_frame();
-        address_t ta = f->module->tableaddrs[dst];
-        address_t tb = f->module->tableaddrs[src];
+        auto f                = ctx_.current_frame();
+        address_t ta          = f->module->tableaddrs[dst];
+        address_t tb          = f->module->tableaddrs[src];
         table_instance& tab_x = ctx_.store()->tables[ta];
         table_instance& tab_y = ctx_.store()->tables[tb];
 
@@ -2024,8 +2061,7 @@ struct opcode_interpreter {
             for (u32 j = 0; j < n; j++) {
                 tab_x.elem[d++] = tab_y.elem[s++];
             }
-        }
-        else {
+        } else {
             for (; n > 0; n--) {
                 tab_x.elem[d + n - 1] = tab_y.elem[s + n - 1];
             }
@@ -2036,10 +2072,10 @@ struct opcode_interpreter {
     exec_result exec_table_init(opcode ins) {
         auto [seg_idx, tab_idx] = decode_index2(ins);
 
-        auto f = ctx_.current_frame();
-        address_t ta = f->module->tableaddrs[tab_idx];
-        address_t ea = f->module->elemaddrs[seg_idx];
-        table_instance& tab = ctx_.store()->tables[ta];
+        auto f                 = ctx_.current_frame();
+        address_t ta           = f->module->tableaddrs[tab_idx];
+        address_t ea           = f->module->elemaddrs[seg_idx];
+        table_instance& tab    = ctx_.store()->tables[ta];
         element_instance& elem = ctx_.store()->elements[ea];
 
         u32 n = ctx_.stack_pop().as_u32();
@@ -2059,44 +2095,41 @@ struct opcode_interpreter {
     exec_result exec_elem_drop(opcode ins) {
         auto [x] = decode_index(ins);
 
-        auto f = ctx_.current_frame();
-        address_t a = f->module->tableaddrs[x];
+        auto f                 = ctx_.current_frame();
+        address_t a            = f->module->tableaddrs[x];
         element_instance& elem = ctx_.store()->elements[a];
         elem.elem.clear();
 
         return exec_ok();
     }
 
-
     // ------------------------------------------------------------
 
-
     exec_result exec_memory_size(opcode ins) {
-        auto [idx] = decode_index(ins);
-        auto *f = ctx_.current_frame();
-        address_t a = f->module->memaddrs[idx];
+        auto [idx]      = decode_index(ins);
+        auto *f         = ctx_.current_frame();
+        address_t a     = f->module->memaddrs[idx];
         const auto& mem = ctx_.store()->memorys[a];
-        u32 sz = mem.data.size() / memory_instance::page_size;
+        u32 sz          = mem.data.size() / memory_instance::page_size;
         ctx_.stack_push(u32{sz});
         return exec_ok();
     }
 
     exec_result exec_memory_grow(opcode ins) {
-        auto [idx] = decode_index(ins);
-        auto *f = ctx_.current_frame();
+        auto [idx]  = decode_index(ins);
+        auto *f     = ctx_.current_frame();
         address_t a = f->module->memaddrs[idx];
-        auto& mem = ctx_.store()->memorys[a];
+        auto& mem   = ctx_.store()->memorys[a];
 
         u32 sz = mem.data.size() / memory_instance::page_size;
-        u32 n = ctx_.stack_pop().as_u32();
+        u32 n  = ctx_.stack_pop().as_u32();
 
         u32 len = sz + n;
         assert(len >= sz);
 
         if (len > 65536 || (mem.kind.limit.max && len > mem.kind.limit.max)) {
             ctx_.stack_push(std::numeric_limits<u32>::max());
-        }
-        else {
+        } else {
             mem.data.resize(len * memory_instance::page_size);
             ctx_.stack_push(sz);
         }
@@ -2105,10 +2138,10 @@ struct opcode_interpreter {
     }
 
     exec_result exec_memory_fill(opcode ins) {
-        auto [idx] = decode_index(ins);
-        auto *f = ctx_.current_frame();
+        auto [idx]  = decode_index(ins);
+        auto *f     = ctx_.current_frame();
         address_t a = f->module->memaddrs[idx];
-        auto& mem = ctx_.store()->memorys[a];
+        auto& mem   = ctx_.store()->memorys[a];
 
         u32 n   = ctx_.stack_pop().as_u32();
         u32 val = ctx_.stack_pop().as_u32();
@@ -2118,6 +2151,7 @@ struct opcode_interpreter {
             throw wasm_trap("memory_fill: Invalid address");
         }
         std::fill_n(mem.data.begin() + d, n, val);
+        mem.unmark_closed(d, d + n);
         return exec_ok();
     }
 
@@ -2138,13 +2172,13 @@ struct opcode_interpreter {
     }
 
     exec_result exec_memory_init(opcode ins) {
-        auto [idx] = decode_index(ins);
-        auto *f = ctx_.current_frame();
+        auto [idx]   = decode_index(ins);
+        auto *f      = ctx_.current_frame();
         address_t ma = f->module->memaddrs[0];
-        auto& mem = ctx_.store()->memorys[ma];
+        auto& mem    = ctx_.store()->memorys[ma];
 
         address_t da = f->module->dataaddrs[idx];
-        auto& data = ctx_.store()->datas[da];
+        auto& data   = ctx_.store()->datas[da];
 
         u32 n = ctx_.stack_pop().as_u32();
         u32 s = ctx_.stack_pop().as_u32();
@@ -2154,22 +2188,23 @@ struct opcode_interpreter {
             throw wasm_trap("memory_init: Invalid address");
         }
         std::copy(data.data.begin() + s, data.data.begin() + s + n, mem.data.begin() + d);
+        mem.unmark_closed(d, d + n);
         return exec_ok();
     }
 
     exec_result exec_data_drop(opcode ins) {
-        auto [idx] = decode_index(ins);
-        auto *f = ctx_.current_frame();
+        auto [idx]   = decode_index(ins);
+        auto *f      = ctx_.current_frame();
         address_t da = f->module->dataaddrs[idx];
-        auto& data = ctx_.store()->datas[da];
+        auto& data   = ctx_.store()->datas[da];
         data.data.clear();
         return exec_ok();
     }
 
     template <typename From, typename To>
     void do_load(u32 offset) {
-        auto *f = ctx_.current_frame();
-        address_t a = f->module->memaddrs[0];
+        auto *f              = ctx_.current_frame();
+        address_t a          = f->module->memaddrs[0];
         memory_instance& mem = ctx_.store()->memorys[a];
 
         auto tmp = ctx_.stack_pop();
@@ -2184,10 +2219,10 @@ struct opcode_interpreter {
         To c = ctx_.template memory_load<From>(ea);
 
         if (mem.contains_secret(ea, ea + n)) {
-            // std::cout << "Loading secret from mem[" << ea << "]" << std::endl;
+            // std::cout << "Loading secret from mem[" << ea << "]" <<
+            // std::endl;
             ctx_.stack_push(ctx_.make_witness(c));
-        }
-        else {
+        } else {
             ctx_.stack_push(c);
         }
     }
@@ -2196,8 +2231,7 @@ struct opcode_interpreter {
         auto [type, sign, align, offset] = decode_opcode(ins);
         if (type == value_kind::i32) {
             do_load<u32, u32>(offset);
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             do_load<u64, u64>(offset);
         }
@@ -2220,17 +2254,14 @@ struct opcode_interpreter {
         if (type == value_kind::i32) {
             if (sign == sign_kind::sign) {
                 do_load<s8, u32>(offset);
-            }
-            else {
+            } else {
                 do_load<u8, u32>(offset);
             }
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             if (sign == sign_kind::sign) {
                 do_load<s8, u64>(offset);
-            }
-            else {
+            } else {
                 do_load<u8, u64>(offset);
             }
         }
@@ -2242,17 +2273,14 @@ struct opcode_interpreter {
         if (type == value_kind::i32) {
             if (sign == sign_kind::sign) {
                 do_load<s16, u32>(offset);
-            }
-            else {
+            } else {
                 do_load<u16, u32>(offset);
             }
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             if (sign == sign_kind::sign) {
                 do_load<s16, u64>(offset);
-            }
-            else {
+            } else {
                 do_load<u16, u64>(offset);
             }
         }
@@ -2263,8 +2291,7 @@ struct opcode_interpreter {
         auto [type, sign, align, offset] = decode_opcode(ins);
         if (sign == sign_kind::sign) {
             do_load<s32, u64>(offset);
-        }
-        else {
+        } else {
             do_load<u32, u64>(offset);
         }
         return exec_ok();
@@ -2272,8 +2299,8 @@ struct opcode_interpreter {
 
     template <typename From, typename To>
     exec_result do_store(u32 offset) {
-        auto *f = ctx_.current_frame();
-        address_t a = f->module->memaddrs[0];
+        auto *f              = ctx_.current_frame();
+        address_t a          = f->module->memaddrs[0];
         memory_instance& mem = ctx_.store()->memorys[a];
 
         auto tmp  = ctx_.stack_pop();
@@ -2289,29 +2316,24 @@ struct opcode_interpreter {
 
         if (tmp.is_val()) {
             mem.unmark_closed(ea, ea + n);
-        }
-        else {
+        } else {
             mem.mark_secret_closed(ea, ea + n);
         }
 
         To c;
         if constexpr (std::is_same_v<From, u32>) {
             u32 num = ctx_.make_numeric(std::move(tmp)).as_u32();
-            c = static_cast<To>(num);
-        }
-        else if constexpr (std::is_same_v<From, u64>) {
+            c       = static_cast<To>(num);
+        } else if constexpr (std::is_same_v<From, u64>) {
             u64 num = ctx_.make_numeric(std::move(tmp)).as_u64();
-            c = static_cast<To>(num);
-        }
-        else if constexpr (std::is_same_v<From, float>) {
+            c       = static_cast<To>(num);
+        } else if constexpr (std::is_same_v<From, float>) {
             float num = ctx_.make_numeric(std::move(tmp)).as_f32();
-            c = num;
-        }
-        else if constexpr (std::is_same_v<From, double>) {
+            c         = num;
+        } else if constexpr (std::is_same_v<From, double>) {
             double num = ctx_.make_numeric(std::move(tmp)).as_f64();
-            c = num;
-        }
-        else {
+            c          = num;
+        } else {
             static_assert(false, "Unexpected conversion type");
         }
 
@@ -2325,8 +2347,7 @@ struct opcode_interpreter {
         auto [type, sign, align, offset] = decode_opcode(ins);
         if (type == value_kind::i32) {
             return do_store<u32, u32>(offset);
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             return do_store<u64, u64>(offset);
         }
@@ -2346,8 +2367,7 @@ struct opcode_interpreter {
         auto [type, sign, align, offset] = decode_opcode(ins);
         if (type == value_kind::i32) {
             return do_store<u32, u8>(offset);
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             return do_store<u64, u8>(offset);
         }
@@ -2357,8 +2377,7 @@ struct opcode_interpreter {
         auto [type, sign, align, offset] = decode_opcode(ins);
         if (type == value_kind::i32) {
             return do_store<u32, u16>(offset);
-        }
-        else {
+        } else {
             assert(type == value_kind::i64);
             return do_store<u64, u16>(offset);
         }
@@ -2369,157 +2388,156 @@ struct opcode_interpreter {
         return do_store<u64, u32>(offset);
     }
 
+    static constexpr std::array<opcode_func, opcode::total_size>
+        opcode_dispatch_table = {
+            &opcode_interpreter::exec_nop,
 
-    static constexpr std::array<opcode_func, opcode::total_size> opcode_dispatch_table = {
-        &opcode_interpreter::exec_nop,
+            // Constants
+            &opcode_interpreter::exec_inn_const,
 
-        // Constants
-        &opcode_interpreter::exec_inn_const,
+            // Integer Unary
+            &opcode_interpreter::exec_inn_clz,
+            &opcode_interpreter::exec_inn_ctz,
+            &opcode_interpreter::exec_inn_popcnt,
+            &opcode_interpreter::exec_inn_eqz,
 
-        // Integer Unary
-        &opcode_interpreter::exec_inn_clz,
-        &opcode_interpreter::exec_inn_ctz,
-        &opcode_interpreter::exec_inn_popcnt,
-        &opcode_interpreter::exec_inn_eqz,
+            // Integer Binary
+            &opcode_interpreter::exec_inn_add,
+            &opcode_interpreter::exec_inn_sub,
+            &opcode_interpreter::exec_inn_mul,
+            &opcode_interpreter::exec_inn_div_sx,
+            &opcode_interpreter::exec_inn_rem_sx,
+            &opcode_interpreter::exec_inn_and,
+            &opcode_interpreter::exec_inn_or,
+            &opcode_interpreter::exec_inn_xor,
+            &opcode_interpreter::exec_inn_shl,
+            &opcode_interpreter::exec_inn_shr_sx,
+            &opcode_interpreter::exec_inn_rotl,
+            &opcode_interpreter::exec_inn_rotr,
+            &opcode_interpreter::exec_inn_eq,
+            &opcode_interpreter::exec_inn_ne,
+            &opcode_interpreter::exec_inn_lt_sx,
+            &opcode_interpreter::exec_inn_gt_sx,
+            &opcode_interpreter::exec_inn_le_sx,
+            &opcode_interpreter::exec_inn_ge_sx,
 
-        // Integer Binary
-        &opcode_interpreter::exec_inn_add,
-        &opcode_interpreter::exec_inn_sub,
-        &opcode_interpreter::exec_inn_mul,
-        &opcode_interpreter::exec_inn_div_sx,
-        &opcode_interpreter::exec_inn_rem_sx,
-        &opcode_interpreter::exec_inn_and,
-        &opcode_interpreter::exec_inn_or,
-        &opcode_interpreter::exec_inn_xor,
-        &opcode_interpreter::exec_inn_shl,
-        &opcode_interpreter::exec_inn_shr_sx,
-        &opcode_interpreter::exec_inn_rotl,
-        &opcode_interpreter::exec_inn_rotr,
-        &opcode_interpreter::exec_inn_eq,
-        &opcode_interpreter::exec_inn_ne,
-        &opcode_interpreter::exec_inn_lt_sx,
-        &opcode_interpreter::exec_inn_gt_sx,
-        &opcode_interpreter::exec_inn_le_sx,
-        &opcode_interpreter::exec_inn_ge_sx,
+            // Extensions
+            &opcode_interpreter::exec_inn_extend8_s,
+            &opcode_interpreter::exec_inn_extend16_s,
+            &opcode_interpreter::exec_i64_extend32_s,
+            &opcode_interpreter::exec_i64_extend_i32_sx,
+            &opcode_interpreter::exec_i32_wrap_i64,
 
-        // Extensions
-        &opcode_interpreter::exec_inn_extend8_s,
-        &opcode_interpreter::exec_inn_extend16_s,
-        &opcode_interpreter::exec_i64_extend32_s,
-        &opcode_interpreter::exec_i64_extend_i32_sx,
-        &opcode_interpreter::exec_i32_wrap_i64,
+            // Float Constants and Operations
+            &opcode_interpreter::exec_fnn_const,
+            &opcode_interpreter::exec_fnn_eq,
+            &opcode_interpreter::exec_fnn_ne,
+            &opcode_interpreter::exec_fnn_lt,
+            &opcode_interpreter::exec_fnn_gt,
+            &opcode_interpreter::exec_fnn_le,
+            &opcode_interpreter::exec_fnn_ge,
+            &opcode_interpreter::exec_fnn_abs,
+            &opcode_interpreter::exec_fnn_neg,
+            &opcode_interpreter::exec_fnn_ceil,
+            &opcode_interpreter::exec_fnn_floor,
+            &opcode_interpreter::exec_fnn_trunc,
+            &opcode_interpreter::exec_fnn_nearest,
+            &opcode_interpreter::exec_fnn_sqrt,
+            &opcode_interpreter::exec_fnn_add,
+            &opcode_interpreter::exec_fnn_sub,
+            &opcode_interpreter::exec_fnn_mul,
+            &opcode_interpreter::exec_fnn_div,
+            &opcode_interpreter::exec_fnn_min,
+            &opcode_interpreter::exec_fnn_max,
+            &opcode_interpreter::exec_fnn_copysign,
 
-        // Float Constants and Operations
-        &opcode_interpreter::exec_fnn_const,
-        &opcode_interpreter::exec_fnn_eq,
-        &opcode_interpreter::exec_fnn_ne,
-        &opcode_interpreter::exec_fnn_lt,
-        &opcode_interpreter::exec_fnn_gt,
-        &opcode_interpreter::exec_fnn_le,
-        &opcode_interpreter::exec_fnn_ge,
-        &opcode_interpreter::exec_fnn_abs,
-        &opcode_interpreter::exec_fnn_neg,
-        &opcode_interpreter::exec_fnn_ceil,
-        &opcode_interpreter::exec_fnn_floor,
-        &opcode_interpreter::exec_fnn_trunc,
-        &opcode_interpreter::exec_fnn_nearest,
-        &opcode_interpreter::exec_fnn_sqrt,
-        &opcode_interpreter::exec_fnn_add,
-        &opcode_interpreter::exec_fnn_sub,
-        &opcode_interpreter::exec_fnn_mul,
-        &opcode_interpreter::exec_fnn_div,
-        &opcode_interpreter::exec_fnn_min,
-        &opcode_interpreter::exec_fnn_max,
-        &opcode_interpreter::exec_fnn_copysign,
+            // Float conversions
+            &opcode_interpreter::exec_f32_convert_i32_s,
+            &opcode_interpreter::exec_f32_convert_i32_u,
+            &opcode_interpreter::exec_f32_convert_i64_s,
+            &opcode_interpreter::exec_f32_convert_i64_u,
+            &opcode_interpreter::exec_f32_demote_f64,
+            &opcode_interpreter::exec_f64_convert_i32_s,
+            &opcode_interpreter::exec_f64_convert_i32_u,
+            &opcode_interpreter::exec_f64_convert_i64_s,
+            &opcode_interpreter::exec_f64_convert_i64_u,
+            &opcode_interpreter::exec_f64_promote_f32,
 
-        // Float conversions
-        &opcode_interpreter::exec_f32_convert_i32_s,
-        &opcode_interpreter::exec_f32_convert_i32_u,
-        &opcode_interpreter::exec_f32_convert_i64_s,
-        &opcode_interpreter::exec_f32_convert_i64_u,
-        &opcode_interpreter::exec_f32_demote_f64,
-        &opcode_interpreter::exec_f64_convert_i32_s,
-        &opcode_interpreter::exec_f64_convert_i32_u,
-        &opcode_interpreter::exec_f64_convert_i64_s,
-        &opcode_interpreter::exec_f64_convert_i64_u,
-        &opcode_interpreter::exec_f64_promote_f32,
+            // Reinterpret
+            &opcode_interpreter::exec_i32_reinterpret_f32,
+            &opcode_interpreter::exec_i64_reinterpret_f64,
+            &opcode_interpreter::exec_f32_reinterpret_i32,
+            &opcode_interpreter::exec_f64_reinterpret_i64,
 
-        // Reinterpret
-        &opcode_interpreter::exec_i32_reinterpret_f32,
-        &opcode_interpreter::exec_i64_reinterpret_f64,
-        &opcode_interpreter::exec_f32_reinterpret_i32,
-        &opcode_interpreter::exec_f64_reinterpret_i64,
+            // Trunc
+            &opcode_interpreter::exec_i32_trunc_f32_s,
+            &opcode_interpreter::exec_i32_trunc_f32_u,
+            &opcode_interpreter::exec_i32_trunc_f64_s,
+            &opcode_interpreter::exec_i32_trunc_f64_u,
+            &opcode_interpreter::exec_i64_trunc_f32_s,
+            &opcode_interpreter::exec_i64_trunc_f32_u,
+            &opcode_interpreter::exec_i64_trunc_f64_s,
+            &opcode_interpreter::exec_i64_trunc_f64_u,
 
-        // Trunc
-        &opcode_interpreter::exec_i32_trunc_f32_s,
-        &opcode_interpreter::exec_i32_trunc_f32_u,
-        &opcode_interpreter::exec_i32_trunc_f64_s,
-        &opcode_interpreter::exec_i32_trunc_f64_u,
-        &opcode_interpreter::exec_i64_trunc_f32_s,
-        &opcode_interpreter::exec_i64_trunc_f32_u,
-        &opcode_interpreter::exec_i64_trunc_f64_s,
-        &opcode_interpreter::exec_i64_trunc_f64_u,
+            // Trunc sat
+            &opcode_interpreter::exec_i32_trunc_sat_f32_s,
+            &opcode_interpreter::exec_i32_trunc_sat_f32_u,
+            &opcode_interpreter::exec_i32_trunc_sat_f64_s,
+            &opcode_interpreter::exec_i32_trunc_sat_f64_u,
+            &opcode_interpreter::exec_i64_trunc_sat_f32_s,
+            &opcode_interpreter::exec_i64_trunc_sat_f32_u,
+            &opcode_interpreter::exec_i64_trunc_sat_f64_s,
+            &opcode_interpreter::exec_i64_trunc_sat_f64_u,
 
-        // Trunc sat
-        &opcode_interpreter::exec_i32_trunc_sat_f32_s,
-        &opcode_interpreter::exec_i32_trunc_sat_f32_u,
-        &opcode_interpreter::exec_i32_trunc_sat_f64_s,
-        &opcode_interpreter::exec_i32_trunc_sat_f64_u,
-        &opcode_interpreter::exec_i64_trunc_sat_f32_s,
-        &opcode_interpreter::exec_i64_trunc_sat_f32_u,
-        &opcode_interpreter::exec_i64_trunc_sat_f64_s,
-        &opcode_interpreter::exec_i64_trunc_sat_f64_u,
+            // Memory access
+            &opcode_interpreter::exec_inn_load,
+            &opcode_interpreter::exec_inn_store,
+            &opcode_interpreter::exec_inn_load8_sx,
+            &opcode_interpreter::exec_inn_load16_sx,
+            &opcode_interpreter::exec_i64_load32_sx,
+            &opcode_interpreter::exec_inn_store8,
+            &opcode_interpreter::exec_inn_store16,
+            &opcode_interpreter::exec_i64_store32,
 
-        // Memory access
-        &opcode_interpreter::exec_inn_load,
-        &opcode_interpreter::exec_inn_store,
-        &opcode_interpreter::exec_inn_load8_sx,
-        &opcode_interpreter::exec_inn_load16_sx,
-        &opcode_interpreter::exec_i64_load32_sx,
-        &opcode_interpreter::exec_inn_store8,
-        &opcode_interpreter::exec_inn_store16,
-        &opcode_interpreter::exec_i64_store32,
+            &opcode_interpreter::exec_fnn_load,
+            &opcode_interpreter::exec_fnn_store,
 
-        &opcode_interpreter::exec_fnn_load,
-        &opcode_interpreter::exec_fnn_store,
+            // References
+            &opcode_interpreter::exec_ref_null,
+            &opcode_interpreter::exec_ref_is_null,
+            &opcode_interpreter::exec_ref_func,
 
-        // References
-        &opcode_interpreter::exec_ref_null,
-        &opcode_interpreter::exec_ref_is_null,
-        &opcode_interpreter::exec_ref_func,
+            // Parametric
+            &opcode_interpreter::exec_drop,
+            &opcode_interpreter::exec_select,
 
-        // Parametric
-        &opcode_interpreter::exec_drop,
-        &opcode_interpreter::exec_select,
+            // Variable
+            &opcode_interpreter::exec_local_get,
+            &opcode_interpreter::exec_local_set,
+            &opcode_interpreter::exec_local_tee,
+            &opcode_interpreter::exec_global_get,
+            &opcode_interpreter::exec_global_set,
 
-        // Variable
-        &opcode_interpreter::exec_local_get,
-        &opcode_interpreter::exec_local_set,
-        &opcode_interpreter::exec_local_tee,
-        &opcode_interpreter::exec_global_get,
-        &opcode_interpreter::exec_global_set,
+            // Table
+            &opcode_interpreter::exec_table_get,
+            &opcode_interpreter::exec_table_set,
+            &opcode_interpreter::exec_table_size,
+            &opcode_interpreter::exec_table_grow,
+            &opcode_interpreter::exec_table_fill,
+            &opcode_interpreter::exec_table_copy,
+            &opcode_interpreter::exec_table_init,
+            &opcode_interpreter::exec_elem_drop,
 
-        // Table
-        &opcode_interpreter::exec_table_get,
-        &opcode_interpreter::exec_table_set,
-        &opcode_interpreter::exec_table_size,
-        &opcode_interpreter::exec_table_grow,
-        &opcode_interpreter::exec_table_fill,
-        &opcode_interpreter::exec_table_copy,
-        &opcode_interpreter::exec_table_init,
-        &opcode_interpreter::exec_elem_drop,
+            // Memory
+            &opcode_interpreter::exec_memory_size,
+            &opcode_interpreter::exec_memory_grow,
+            &opcode_interpreter::exec_memory_fill,
+            &opcode_interpreter::exec_memory_copy,
+            &opcode_interpreter::exec_memory_init,
+            &opcode_interpreter::exec_data_drop,
 
-        // Memory
-        &opcode_interpreter::exec_memory_size,
-        &opcode_interpreter::exec_memory_grow,
-        &opcode_interpreter::exec_memory_fill,
-        &opcode_interpreter::exec_memory_copy,
-        &opcode_interpreter::exec_memory_init,
-        &opcode_interpreter::exec_data_drop,
-
-        &opcode_interpreter::exec_unreachable,
+            &opcode_interpreter::exec_unreachable,
     };
-
 
 private:
     Context& ctx_;
@@ -2527,5 +2545,4 @@ private:
     std::array<size_t, opcode::total_size> opcode_counter_;
 };
 
-
-}  // namespace ligero::vm
+} // namespace ligero::vm

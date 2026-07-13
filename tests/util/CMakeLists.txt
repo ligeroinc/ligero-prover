@@ -5,12 +5,6 @@ if(POLICY CMP0144)
   cmake_policy(SET CMP0144 NEW)
 endif()
 
-# Use NEW behavior for CMP0167 (CMake ≥3.29): FindBoost module is removed in favor of BoostConfig.cmake.
-# We still use FindBoost for WASM builds, so suppress the deprecation warning.
-if(POLICY CMP0167)
-  cmake_policy(SET CMP0167 NEW)
-endif()
-
 # -----------------------------------------------------------------------------
 # Test target
 # -----------------------------------------------------------------------------
@@ -27,74 +21,9 @@ endif()
 # Dependencies: Boost.Test (native + wasm) and GMP (native via pkg-config; wasm by name)
 # -----------------------------------------------------------------------------
 
-# --- Boost.Test ---
-if(EMSCRIPTEN)
-  # ---------------------------------------------------------------------------
-  # Resolve WASM_LIBS_PREFIX from CMAKE_PREFIX_PATH
-  # Search for known marker files to identify the correct prefix
-  # ---------------------------------------------------------------------------
-  set(WASM_LIBS_PREFIX "")
-  if(DEFINED CMAKE_PREFIX_PATH)
-    foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
-      if(EXISTS "${_prefix}/include/boost/version.hpp" AND
-         EXISTS "${_prefix}/lib/libboost_unit_test_framework.a")
-        set(WASM_LIBS_PREFIX "${_prefix}")
-        message(STATUS "Found WASM libs prefix via CMAKE_PREFIX_PATH: ${WASM_LIBS_PREFIX}")
-        break()
-      endif()
-    endforeach()
-  endif()
-
-  if(NOT WASM_LIBS_PREFIX)
-    message(FATAL_ERROR
-      "Could not locate WASM libraries prefix. "
-      "Ensure CMAKE_PREFIX_PATH contains a path with both "
-      "include/boost/version.hpp and lib/libboost_unit_test_framework.a "
-      "(e.g., -DCMAKE_PREFIX_PATH=/opt/wasm-libs)")
-  endif()
-
-  # Strong hints for FindBoost to look in the resolved prefix
-  set(Boost_NO_BOOST_CMAKE ON)                  # force FindBoost.cmake (no BoostConfig.cmake)
-  set(Boost_USE_STATIC_LIBS ON)                 # Emscripten uses static libs
-  set(BOOST_ROOT "${WASM_LIBS_PREFIX}")
-  set(BOOST_INCLUDEDIR "${WASM_LIBS_PREFIX}/include")
-  set(BOOST_LIBRARYDIR "${WASM_LIBS_PREFIX}/lib")
-
-  # First try the normal FindBoost path
-  find_package(Boost QUIET COMPONENTS unit_test_framework)
-
-  if(NOT Boost_FOUND)
-    message(WARNING "FindBoost couldn't locate Boost.Test for WASM; "
-                    "falling back to manual import from ${WASM_LIBS_PREFIX}")
-
-    # Sanity-check expected artifacts
-    set(_BOOST_HDR "${WASM_LIBS_PREFIX}/include/boost/version.hpp")
-    set(_BOOST_UTF_LIB "${WASM_LIBS_PREFIX}/lib/libboost_unit_test_framework.a")
-
-    # Create an imported target to mimic Boost::unit_test_framework
-    add_library(Boost::unit_test_framework STATIC IMPORTED GLOBAL)
-    set_target_properties(Boost::unit_test_framework PROPERTIES
-      IMPORTED_LOCATION "${_BOOST_UTF_LIB}"
-      INTERFACE_INCLUDE_DIRECTORIES "${WASM_LIBS_PREFIX}/include"
-    )
-
-    # Provide variables some tooling may expect
-    set(Boost_INCLUDE_DIRS "${WASM_LIBS_PREFIX}/include")
-    set(Boost_UNIT_TEST_FRAMEWORK_LIBRARY "${_BOOST_UTF_LIB}")
-    set(Boost_FOUND TRUE)
-  else()
-    message(STATUS "Found Boost for WASM")
-    message(STATUS "  Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}")
-    message(STATUS "  Boost_LIBRARIES:    ${Boost_LIBRARIES}")
-  endif()
-else()
-  # Native discovery
-  find_package(Boost REQUIRED COMPONENTS unit_test_framework)
-endif()
-
-# --- GMP ---
+# --- Dependencies ---
 if(NOT EMSCRIPTEN)
-  # Native: use pkg-config imported targets
+  find_package(Boost REQUIRED COMPONENTS unit_test_framework)
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GMP   REQUIRED IMPORTED_TARGET gmp)
   pkg_check_modules(GMPXX REQUIRED IMPORTED_TARGET gmpxx)
@@ -108,24 +37,20 @@ target_include_directories(test_mpz_get PRIVATE
 )
 
 # External library headers as SYSTEM to suppress warnings from them
-target_include_directories(test_mpz_get SYSTEM PRIVATE ${Boost_INCLUDE_DIRS})
-
-if(EMSCRIPTEN)
-  # Emscripten: ensure third-party headers (e.g., gmpxx.h) are reachable
-  target_include_directories(test_mpz_get SYSTEM PRIVATE "${WASM_LIBS_PREFIX}/include")
+if(NOT EMSCRIPTEN)
+  target_include_directories(test_mpz_get SYSTEM PRIVATE ${Boost_INCLUDE_DIRS})
 endif()
+# WASM headers are already reachable via the parent's
+# include_directories(SYSTEM ${CMAKE_PREFIX_PATH}/include)
 
 # -----------------------------------------------------------------------------
 # Linking
 # -----------------------------------------------------------------------------
 if(EMSCRIPTEN)
-  # Ensure linker can resolve libs in the WASM prefix
-  target_link_directories(test_mpz_get PRIVATE "${WASM_LIBS_PREFIX}/lib")
-
   target_link_libraries(test_mpz_get PRIVATE
-    Boost::unit_test_framework
-    gmp
-    gmpxx
+    wasm::boost_unit_test_framework
+    wasm::gmp
+    wasm::gmpxx
   )
 else()
   target_link_libraries(test_mpz_get PRIVATE
@@ -186,10 +111,10 @@ add_custom_target(run_mpz_util_tests
 message(STATUS "")
 message(STATUS "MPZ Util Tests Configuration:")
 message(STATUS "  Test executable: $<TARGET_FILE:test_mpz_get>")
-message(STATUS "  Boost include:   ${Boost_INCLUDE_DIRS}")
 if(EMSCRIPTEN)
-  message(STATUS "  (WASM) using ${WASM_LIBS_PREFIX} for headers/libs")
+  message(STATUS "  (WASM) using wasm:: imported targets from ${CMAKE_PREFIX_PATH}")
 else()
+  message(STATUS "  Boost include:   ${Boost_INCLUDE_DIRS}")
   message(STATUS "  (Native) GMP via pkg-config")
 endif()
 message(STATUS "")

@@ -60,7 +60,8 @@ void test_ecdsa_p256(const std::string &pub_key_x_str,
     ec::p256_curve::scalar_field_element s{s_str.c_str()};
     ec::p256_curve::point pub_key{pub_key_x_str.c_str(), pub_key_y_str.c_str()};
 
-    assert_one(ecdsa_verify<ec::p256_curve>(msg_hash_data, r, s, pub_key));
+    auto res = ecdsa_verify<ec::p256_curve>(msg_hash_data, r, s, pub_key);
+    bn254fr_assert_equal_u32(res.data(), 1);
 }
 
 
