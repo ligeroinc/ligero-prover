@@ -1,4 +1,10 @@
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <iostream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 
 #include <util/log.hpp>
 #include <ligetron/webgpu/common.hpp>
@@ -31,6 +37,33 @@ const char* backendTypeName(WGPUBackendType type) {
     case WGPUBackendType_OpenGLES: return "OpenGLES";
     default:                       return "Undefined";
     }
+}
+
+// Classify an adapter as a software rasterizer by name. Needed because the
+// WASM build cannot rely on adapterType/backendType: the WebGPU JS
+// GPUAdapterInfo exposes only vendor/architecture/device/description, so those
+// enums stay zero (type=Unknown, backend=WebGPU) in the browser/Node path. The
+// string fields do cross the JS boundary, and that's exactly where a real GPU
+// and a software rasterizer differ (device="llvmpipe", description="llvmpipe
+// (LLVM ...)"), so name matching is reliable in both native and WASM. See #387.
+bool isSoftwareRasterizer(std::string_view name) {
+    std::string s(name);
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    for (std::string_view marker : {"llvmpipe", "lavapipe", "swiftshader",
+                                    "software", "basic render", "warp"}) {
+        if (s.find(marker) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Whether LIGERO_REQUIRE_GPU requests a hard failure on a software adapter.
+// Any value other than unset/empty/"0" enables it.
+bool requireHardwareGpu() {
+    const char* v = std::getenv("LIGERO_REQUIRE_GPU");
+    return v != nullptr && v[0] != '\0' && std::string_view(v) != "0";
 }
 
 // Helper to wait for a WebGPU future to complete
@@ -68,14 +101,32 @@ WGPUAdapter wgpuRequestAdapterSync(WGPUInstance instance) {
 
                 WGPUAdapterInfo adapterInfo {};
                 wgpuAdapterGetInfo(a, &adapterInfo);
+
+                std::string_view device(adapterInfo.device.data, adapterInfo.device.length);
+                std::string_view description(adapterInfo.description.data,
+                                             adapterInfo.description.length);
+
+                // Trust adapterType when it is meaningful (native Dawn), fall
+                // back to name matching for the WASM path where it is Unknown.
+                bool software = adapterInfo.adapterType == WGPUAdapterType_CPU
+                             || isSoftwareRasterizer(device)
+                             || isSoftwareRasterizer(description);
+
                 LIGERO_LOG_INFO
-                    << "Selected adapter: "
-                    << std::string_view(adapterInfo.device.data, adapterInfo.device.length)
+                    << "Selected adapter: " << device
                     << " (vendor="
                     << std::string_view(adapterInfo.vendor.data, adapterInfo.vendor.length)
                     << ", type=" << adapterTypeName(adapterInfo.adapterType)
-                    << ", backend=" << backendTypeName(adapterInfo.backendType) << ")";
+                    << ", backend=" << backendTypeName(adapterInfo.backendType)
+                    << ", acceleration=" << (software ? "SOFTWARE" : "HARDWARE") << ")";
                 wgpuAdapterInfoFreeMembers(adapterInfo);
+
+                if (software && requireHardwareGpu()) {
+                    LIGERO_LOG_ERROR
+                        << "LIGERO_REQUIRE_GPU is set but the selected adapter is a "
+                           "software rasterizer; aborting.";
+                    std::exit(EXIT_FAILURE);
+                }
 
                 *reinterpret_cast<WGPUAdapter*>(ud1) = a;
             },
@@ -301,8 +352,24 @@ void device_context::device_init() {
     }
 
     adapter_ = wgpuRequestAdapterSync(instance_);
-    device_  = wgpuRequestDeviceSync(instance_, adapter_);
-    queue_   = wgpuDeviceGetQueue(device_);
+
+    // Without this check a null adapter is handed straight to
+    // wgpuAdapterRequestDevice, which surfaces in the browser as a bare
+    // "undefined is not an object (evaluating 'adapter.requestDevice')"
+    // instead of the reason logged by the callback above.
+    if (!adapter_) {
+        throw std::runtime_error(
+            "Could not acquire a WebGPU adapter; see the logged reason above. "
+            "The browser may not expose WebGPU at all (Safari requires macOS 26).");
+    }
+
+    device_ = wgpuRequestDeviceSync(instance_, adapter_);
+
+    if (!device_) {
+        throw std::runtime_error("Could not acquire a WebGPU device from the adapter.");
+    }
+
+    queue_ = wgpuDeviceGetQueue(device_);
 }
 
 void device_context::device_shutdown() {
@@ -367,7 +434,18 @@ buffer_view device_context::make_device_buffer(size_t num_bytes) {
                  | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc,
         .size = num_bytes,
     };
-    return buffer_view(wgpuDeviceCreateBuffer(device_, &desc), 0, num_bytes);
+    buffer_view buf(wgpuDeviceCreateBuffer(device_, &desc), 0, num_bytes);
+
+    // #408: zero-initialize every storage buffer at allocation so correctness
+    // never depends on Dawn-vs-wgpu lazy-init semantics. On wgpu (Deno/Firefox)
+    // a fresh buffer whose only writes are partial/dynamic-offset sub-ranges
+    // (e.g. sample_gather) is NOT marked initialized, so a subsequent full read
+    // returns garbage for the untouched regions; Dawn zero-inits eagerly and
+    // hid this (see #406/#407). A single clear here removes the whole class.
+    // Allocations are one-time (per context), so the cost is negligible.
+    clear_buffer(buf);
+
+    return buf;
 }
 
 buffer_view device_context::make_map_buffer(size_t num_bytes) {

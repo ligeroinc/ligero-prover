@@ -154,14 +154,19 @@ fn bn254fr_invmod(x : bigint) -> bigint {
 
 // Compute 32-bit exponent with a Montgomery precompute table
 // Output r ^ exp mod p in Montgomery form
-fn bn254fr_powmod(table : ptr<uniform, array<bigint, 32>>, exponent : u32) -> bigint {
+// Reads the module-scope `powmod_table` (a var<uniform> declared in the
+// kernels template) directly rather than taking a ptr<uniform, ...> parameter:
+// the WebGPU/WGSL spec forbids passing uniform-address-space pointers as
+// function arguments. Dawn accepts it, but wgpu/naga (Firefox, Deno) reject it,
+// so passing the table by pointer made the shader Dawn-only. See ligetron#397.
+fn bn254fr_powmod(exponent : u32) -> bigint {
     // Initialize out to be 1 * R mod p
-    var out : bigint = BN254_mont_R; 
+    var out : bigint = BN254_mont_R;
     for (var i : u32 = 0u; i < 32u; i++) {
         let bi : u32 = (exponent >> i) & 1u;
-        
+
         if (bi == 1u) {
-            out = montgomery_mul(out, (*table)[i]);
+            out = montgomery_mul(out, powmod_table[i]);
         }
     }
     return out;

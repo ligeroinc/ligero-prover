@@ -150,7 +150,11 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Web")
     -sTOTAL_STACK=2MB
     -sINITIAL_MEMORY=256MB
     -sALLOW_MEMORY_GROWTH)
-  add_link_options(-sINVOKE_RUN=0 -sEXPORTED_RUNTIME_METHODS=['FS','callMain'])
+  # ENV is exported (and populated from process.env by env_preload.js below) so
+  # getenv() sees the host environment under Node — Emscripten does not import it
+  # by default. See emscripten_templates/env_preload.js and ligetron#387.
+  add_link_options(-sINVOKE_RUN=0 -sEXPORTED_RUNTIME_METHODS=['FS','callMain','ENV'])
+  add_link_options(--pre-js "${PROJECT_SOURCE_DIR}/emscripten_templates/env_preload.js")
   add_link_options(--preload-file "${CMAKE_BINARY_DIR}/pack@/")
 
   if (ZKPLATFORM)

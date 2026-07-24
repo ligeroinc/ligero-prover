@@ -134,8 +134,21 @@
         btn.disabled = true;
         appendOutput('[UI] Starting verification...');
         try {
-          await Module.callMain([jsonStr]);
-          appendOutput('[UI] Verification finished.');
+          // Under -sASYNCIFY, callMain() returns as soon as main() suspends on
+          // its first async operation, so awaiting it reports completion before
+          // the work has started. Asyncify hands back a promise that settles
+          // when main() actually returns.
+          var status = Module.callMain([jsonStr]);
+          if (typeof Asyncify !== 'undefined' && Asyncify.currData) {
+            status = await Asyncify.whenDone();
+          }
+          // On the asyncify path a non-zero exit resolves with the status
+          // rather than throwing ExitStatus, so check the value here too.
+          if (status) {
+            appendOutput('[UI] Verification exited with code ' + status);
+          } else {
+            appendOutput('[UI] Verification finished.');
+          }
         } catch (error) {
           if (typeof ExitStatus !== 'undefined' && error instanceof ExitStatus) {
             if (error.status !== 0) {

@@ -18,13 +18,45 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <iostream>
+#include <ostream>
+#include <utility>
 
-#define LIGERO_LOG_TRACE   std::cout
-#define LIGERO_LOG_DEBUG   std::cout
-#define LIGERO_LOG_INFO    std::cout
-#define LIGERO_LOG_WARNING std::cout
-#define LIGERO_LOG_ERROR   std::cout
-#define LIGERO_LOG_FATAL   std::cout
+namespace ligero::detail {
+
+// Boost.Log terminates every record with a newline; std::cout does not. The web
+// build wrote log statements straight to std::cout, so they all ran together on
+// a single line ("...acceleration=HARDWARE)=== Start ==="). Terminating in the
+// destructor makes one log statement equal one line, matching the native build,
+// without touching any call site.
+class log_line {
+public:
+    log_line() = default;
+    log_line(const log_line&) = delete;
+    log_line& operator=(const log_line&) = delete;
+
+    ~log_line() { std::cout << '\n'; }
+
+    template <typename T>
+    log_line& operator<<(T&& value) {
+        std::cout << std::forward<T>(value);
+        return *this;
+    }
+
+    // Manipulators such as std::endl cannot be deduced by the template above.
+    log_line& operator<<(std::ostream& (*manip)(std::ostream&)) {
+        std::cout << manip;
+        return *this;
+    }
+};
+
+}  // namespace ligero::detail
+
+#define LIGERO_LOG_TRACE   ::ligero::detail::log_line{}
+#define LIGERO_LOG_DEBUG   ::ligero::detail::log_line{}
+#define LIGERO_LOG_INFO    ::ligero::detail::log_line{}
+#define LIGERO_LOG_WARNING ::ligero::detail::log_line{}
+#define LIGERO_LOG_ERROR   ::ligero::detail::log_line{}
+#define LIGERO_LOG_FATAL   ::ligero::detail::log_line{}
 #else
 #include <boost/log/trivial.hpp>
 #include <boost/log/core.hpp>

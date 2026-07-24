@@ -106,8 +106,21 @@
         btn.disabled = true;
         appendOutput('[UI] Starting proof...');
         try {
-          await Module.callMain([jsonStr]);
-          appendOutput('[UI] Proof finished.');
+          // Under -sASYNCIFY, callMain() returns as soon as main() suspends on
+          // its first async operation (the WebGPU adapter request), so awaiting
+          // it reports completion before the proof has even started. Asyncify
+          // hands back a promise that settles when main() actually returns.
+          var status = Module.callMain([jsonStr]);
+          if (typeof Asyncify !== 'undefined' && Asyncify.currData) {
+            status = await Asyncify.whenDone();
+          }
+          // On the asyncify path a non-zero exit resolves with the status
+          // rather than throwing ExitStatus, so check the value here too.
+          if (status) {
+            appendOutput('[UI] Proof exited with code ' + status);
+          } else {
+            appendOutput('[UI] Proof finished.');
+          }
         } catch (error) {
           // ExitStatus with code 0 is Emscripten's normal main() return path
           if (typeof ExitStatus !== 'undefined' && error instanceof ExitStatus) {

@@ -22,6 +22,11 @@ target_link_libraries(sha256 ligetron)
 add_executable(sha512 SHA512/sha512.cpp)
 target_link_libraries(sha512 ligetron)
 
+# Keccak-256 / Ethereum address
+# ------------------------------------------------------------
+add_executable(eth_address_verify Keccak256/eth_address_verify.cpp)
+target_link_libraries(eth_address_verify ligetron)
+
 # Poseidon
 # ------------------------------------------------------------
 add_executable(poseidon_4to1 Poseidon/poseidon_4to1.cpp)

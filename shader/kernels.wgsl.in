@@ -517,7 +517,7 @@ fn EltwisePowMod(@builtin(global_invocation_id) globalIdx : vec3u,
         let exp   : u32    = powmod_exp[idx];
         let coeff : bigint = powmod_coeff[idx];
 
-        let pow : bigint = bn254fr_powmod(&powmod_table, exp);
+        let pow : bigint = bn254fr_powmod(exp);
         powmod_out[idx]  = montgomery_mul(coeff, pow);
     }
 }
@@ -529,7 +529,7 @@ fn EltwisePowAddMod(@builtin(global_invocation_id) globalIdx : vec3u,
     for (var idx : u32 = globalIdx.x; idx < arrayLength(&powmod_exp); idx += workgroups.x * thread_block_size) {
         let exp   : u32    = powmod_exp[idx];
         let coeff : bigint = powmod_coeff[idx];
-        let pow   : bigint = montgomery_mul(coeff, bn254fr_powmod(&powmod_table, exp));
+        let pow   : bigint = montgomery_mul(coeff, bn254fr_powmod(exp));
         let sum   : bigint = bigint_add(pow, powmod_out[idx]);
 
         powmod_out[idx] = bn254fr_reduce(sum);

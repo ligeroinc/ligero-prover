@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.0](https://github.com/ligeroinc/ligetron/compare/v1.5.0...v1.6.0) (2026-07-24)
+
+
+### Features
+
+* **webgpu:** log HARDWARE vs SOFTWARE adapter acceleration ([#400](https://github.com/ligeroinc/ligetron/issues/400)) ([ef42460](https://github.com/ligeroinc/ligetron/commit/ef42460ece81874e14c4f435935e0de9c3d05fc8))
+
+
+### Bug Fixes
+
+* **log:** terminate web log records with a newline ([#412](https://github.com/ligeroinc/ligetron/issues/412)) ([b3e8978](https://github.com/ligeroinc/ligetron/commit/b3e897805acf85594a47971c210204d0496371f0))
+* **shader:** drop uniform-space pointer param from bn254fr_powmod ([#399](https://github.com/ligeroinc/ligetron/issues/399)) ([f655ba9](https://github.com/ligeroinc/ligetron/commit/f655ba97533296514fc3c8ad0226ea73f30aeae3)), closes [#397](https://github.com/ligeroinc/ligetron/issues/397)
+* **webgpu:** fail with a clear message when no adapter is returned ([#411](https://github.com/ligeroinc/ligetron/issues/411)) ([8a9dbac](https://github.com/ligeroinc/ligetron/commit/8a9dbacb122bc0e0db9fb96118db0ccb78268bf8))
+* **webgpu:** zero-init storage buffers at allocation (wgpu init hazard, [#408](https://github.com/ligeroinc/ligetron/issues/408)) ([#409](https://github.com/ligeroinc/ligetron/issues/409)) ([87394e3](https://github.com/ligeroinc/ligetron/commit/87394e302a514151e168c4bff380deaaebb14a83))
+* **web:** report proof/verify completion when main() actually returns ([#413](https://github.com/ligeroinc/ligetron/issues/413)) ([2a77774](https://github.com/ligeroinc/ligetron/commit/2a777749699e00e4a43530912f1f5419e36d7e0d))
+
 ## [1.5.0](https://github.com/ligeroinc/ligetron/compare/v1.4.0...v1.5.0) (2026-07-09)
 
 
