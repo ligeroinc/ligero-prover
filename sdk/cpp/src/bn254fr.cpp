@@ -114,6 +114,7 @@ void bn254fr_eqz_checked(bn254fr_t out, const bn254fr_t x) {
     bn254fr_alloc(zero);
     bn254fr_alloc(one);
 
+    bn254fr_set_u32(zero, 0);
     bn254fr_set_u32(one, 1);
 
     if (!bn254fr_eqz(x)) {
@@ -121,6 +122,7 @@ void bn254fr_eqz_checked(bn254fr_t out, const bn254fr_t x) {
         bn254fr_invmod(inv, x);
     } else {
         // inv = 0
+        bn254fr_set_u32(inv, 0);
     }
 
     // out = -x * inv + 1
@@ -279,6 +281,7 @@ namespace ligetron {
 
 bn254fr_class::bn254fr_class() {
     bn254fr_alloc(data_);
+    bn254fr_set_u32(data_, 0);
 }
 
 bn254fr_class::bn254fr_class(int i) {

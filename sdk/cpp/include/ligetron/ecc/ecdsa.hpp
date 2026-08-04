@@ -21,6 +21,8 @@
 #include <span>
 #include <vector>
 
+#include <ligetron/bn254fr_bigint.hpp>
+#include <ligetron/bn254fr_class.h>
 #include <ligetron/sha2.h>
 
 namespace ligetron::ecc {
@@ -33,24 +35,42 @@ struct ecdsa_context {
     using point_type   = typename curve_type::point_type;
 
     static constexpr size_t field_bytes     = base_field::num_rounded_bits / 8;
+    // The curve's scalar width and therefore the width of the digest `verify_digest` consumes.
     static constexpr size_t scalar_bytes    = scalar_field::num_rounded_bits / 8;
     static constexpr size_t pubkey_bytes    = 2 * field_bytes;
     static constexpr size_t signature_bytes = 2 * scalar_bytes;
 
-    ecdsa_context(std::span<const std::byte, pubkey_bytes> pubkey) {
-        auto x_bytes = pubkey.template first<field_bytes>();
-        auto y_bytes = pubkey.template subspan<field_bytes, field_bytes>();
+    /// Construct from the uncompressed public key X || Y (big-endian, `field_bytes` each).
+    ecdsa_context(std::span<const std::byte, pubkey_bytes> pubkey)
+        : ecdsa_context(pubkey.template first<field_bytes>(),
+                        pubkey.template subspan<field_bytes, field_bytes>()) {}
+
+    /// Construct from separate big-endian X and Y coordinates. Use this when the caller holds the
+    /// coordinates in distinct buffers (e.g. as separate circuit witnesses) rather than concatenated.
+    ecdsa_context(std::span<const std::byte, field_bytes> x_bytes,
+                  std::span<const std::byte, field_bytes> y_bytes) {
         pubkey_.x.import_bytes_big(
             {reinterpret_cast<const unsigned char*>(x_bytes.data()), x_bytes.size()});
         pubkey_.y.import_bytes_big(
             {reinterpret_cast<const unsigned char*>(y_bytes.data()), y_bytes.size()});
     }
 
-    bn254fr_class verify(std::span<const std::byte, signature_bytes> sig,
-                         std::span<const std::byte> msg) {
+    /// Verifies an ECDSA signature over an already-computed message digest, big-endian.
+    ///
+    /// ECDSA fixes no message hash. The digest is an ecosystem choice -
+    //  Bitcoin and TLS use SHA-256, Ethereum and TRON use keccak256, usually under a wrapper.
+    // `verify_sha256` below binds SHA-256 as one common choice.
+    ///
+    /// `digest` must be exactly `scalar_bytes` long — it is imported straight into a scalar
+    /// field element and is reduced modulo the curve order.
+    ///
+    /// For a hash wider than `scalar_bytes` pass only the most significant
+    // `scalar_bytes` bytes on to `verify_digest`, per SEC1 §4.1.4.
+    bn254fr_class verify_digest(std::span<const std::byte, signature_bytes> sig,
+                                std::span<const std::byte, scalar_bytes> digest) {
 
         bn254fr_class pubkey_valid = curve().on_curve(pubkey_);
-        
+
         auto r_bytes = sig.template first<scalar_bytes>();
         auto s_bytes = sig.template subspan<scalar_bytes, scalar_bytes>();
 
@@ -92,12 +112,8 @@ struct ecdsa_context {
         r = scalar_field::mux(rs_valid, r, imported_r);
         s = scalar_field::mux(rs_valid, s, imported_s);
 
-        // Hardcode sha256 for now
-        unsigned char digest[32]{};
-        ligetron_sha2_256(digest, reinterpret_cast<const unsigned char*>(msg.data()), msg.size());
-        
         scalar_field z;
-        z.import_bytes_big(digest);
+        z.import_bytes_big({reinterpret_cast<const unsigned char*>(digest.data()), digest.size()});
         z.reduce();
 
         scalar_field invs;
@@ -127,6 +143,22 @@ struct ecdsa_context {
         }
 
         return valid;
+    }
+
+    /// Verifies an ECDSA signature over `msg`, hashed with SHA-256 —
+    /// the binding used by Bitcoin and TLS.
+    bn254fr_class verify_sha256(std::span<const std::byte, signature_bytes> sig,
+                                std::span<const std::byte> msg) {
+        // ligetron_sha2_256 writes exactly 32 bytes. On a curve whose scalar is not 256 bits
+        // that no longer fills the buffer, and the straight hand-off below would pad the digest
+        // with trailing zeros instead of aligning it.
+        static_assert(scalar_bytes == 32,
+                      "verify_sha256 assumes a 256-bit scalar");
+
+        unsigned char digest[scalar_bytes]{};
+        ligetron_sha2_256(digest, reinterpret_cast<const unsigned char*>(msg.data()), msg.size());
+        return verify_digest(sig, std::as_bytes(
+            std::span<const unsigned char, scalar_bytes>{digest, scalar_bytes}));
     }
 
 private:

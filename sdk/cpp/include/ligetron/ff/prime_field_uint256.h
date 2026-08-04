@@ -134,6 +134,11 @@ public:
         }
     }
 
+    void set_u32(uint32_t x) {
+        set_uint256(uint256{static_cast<uint64_t>(x)});
+        is_reduced_ = true;
+    }
+
     static void add(prime_field_uint256_storage &out,
                     const prime_field_uint256_storage &x,
                     const prime_field_uint256_storage &y) {
@@ -262,6 +267,7 @@ public:
 
         bn254fr_t zero;
         bn254fr_alloc(zero);
+        bn254fr_set_u32(zero, 0);
 
         if (x.size() < y.size()) {
             for (size_t i = common_size, sz = y.size(); i < sz; ++i) {

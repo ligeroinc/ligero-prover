@@ -642,6 +642,19 @@ void test_divide_qr() {
         "10", "0", "0"
     );
 
+    // Boundary: divisor = 2^192, the smallest this division accepts. Its most significant
+    // limb is nonzero but its top bit is clear, and with the widest dividend the quotient is
+    // exactly 2^320 - 1, so q_high sits at its 64-bit ceiling. Anything smaller overflows
+    // q_high: 2^192 - 1 makes the host truncate the quotient and the proof is rejected.
+    do_test_divide_qr(
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935", // 2^512 - 1
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+        "6277101735386680763835789423207666416102355444464034512896",                     // 2^192
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935", // q = 2^320 - 1
+        "18446744073709551615",
+        "6277101735386680763835789423207666416102355444464034512895"                      // r = 2^192 - 1
+    );
+
     do_test_divide_qr(
         "123456789", "0", "100",
         "1234567", "0", "89"

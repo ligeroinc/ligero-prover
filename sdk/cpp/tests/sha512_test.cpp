@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <ligetron/sha512.h>
+#include <ligetron/sha2.h>
 #include <ligetron/api.h>
 
 #include <cassert>
@@ -50,9 +50,22 @@ std::vector<unsigned char> hex_to_binary(const std::string &hex) {
 }
 
 void test_sha512(const std::string &msg, const std::string &expected_hex) {
+    // The message bytes must be witnesses. Hashing the literal directly costs 0 quadratic
+    // constraints: the digest is folded at compile time and only the comparisons below
+    // survive, so the round function is never traced and this proves nothing about it.
+    std::vector<unsigned char> witness;
+    witness.reserve(msg.size() + 1);
+    for (size_t i = 0; i < msg.size(); ++i) {
+        auto byte = static_cast<unsigned char>(msg[i]);
+        witness.push_back(
+            static_cast<unsigned char>(witness_cast_u32(static_cast<uint32_t>(byte))));
+    }
+    // Keeps data() valid for the empty-message case.
+    witness.push_back(0);
+
     unsigned char out[64];
-    const unsigned char *data = reinterpret_cast<const unsigned char *>(msg.data());
-    ligetron_sha512(out, data, static_cast<int>(msg.size()));
+    const unsigned char *data = witness.data();
+    ligetron_sha2_512(out, data, msg.size());
 
     auto expected = hex_to_binary(expected_hex);
     assert_one(expected.size() == 64);

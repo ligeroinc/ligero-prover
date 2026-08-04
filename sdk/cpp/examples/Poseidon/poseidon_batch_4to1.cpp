@@ -14,24 +14,48 @@
  * limitations under the License.
  */
 
+/*
+ * Vectorized 4-to-1 Poseidon hash, Montgomery constants
+ * (width t=5, four inputs, one output). 
+ *
+ * Pass four inputs + the expected reference output as argv:
+ *   ./poseidon_batch_4to1.wasm <in0> <in1> <in2> <in3> <ref>
+ *
+ * Example arguments:
+ *   in0 = 1
+ *   in1 = 2
+ *   in3 = 3
+ *   in4 = 4
+ *   out = 0x299c867db6c1fdd79dcefa40e4510b9837e60ebb1ce0663dbaa525df65250465
+ */
+
+#include <ligetron/api.h>
 #include <ligetron/poseidon.h>
 
 using namespace ligetron;
-using poseidon_context_fast_t = poseidon_vec_context<poseidon_permx5_254bit_5, true>;
+using poseidon_context_fast_t =
+    poseidon_vec_context<poseidon_permx5_254bit_5, true>;
 
 int main(int argc, char *argv[]) {
-    const char* input_num = argv[1];
-    const char* ref_num   = argv[2];
+    if (argc < 6) {
+        print_str("Usage: poseidon_4to1 <in0> <in1> <in2> <in3> <ref>", 53);
+        assert_one(0);
+        return 1;
+    }
 
-    vbn254fr_class input(input_num), ref(ref_num);
+    vbn254fr_class in0(argv[1]), in1(argv[2]), in2(argv[3]), in3(argv[4]),
+                   ref(argv[5]);
 
     poseidon_context_fast_t::global_init();
     poseidon_context_fast_t ctx;
 
-    ctx.digest_update(input);
+    ctx.digest_update(in0);
+    ctx.digest_update(in1);
+    ctx.digest_update(in2);
+    ctx.digest_update(in3);
     ctx.digest_final();
 
-    ctx.state[0].print_dec();
+    ctx.state[0].print_hex();
 
     vbn254fr_class::assert_equal(ctx.state[0], ref);
 }

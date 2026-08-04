@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-//! Poseidon Hash Example
+//! Poseidon 4-to-1 Hash Example
 //!
-//! This example demonstrates the Poseidon hash function with a single input.
+//! Demonstrates the Poseidon hash function (width t=5, four inputs, one
+//! output). It uses the reference vector and produces the identical digest.
 //!
 //! Arguments:
-//!     [1]: <str> Input number
-//!     [2]: <str> Reference hash
+//!     [1..4]: <str> Input numbers
+//!     [5]:    <str> Reference hash
 
 /*
-    Example test vectors:
-    Input  = 42
-    Output = 11900205294312547303566650979164934562713672929231722670359450569937552281134
+    Example test vectors (verified against Solana's `sol_poseidon`,
+    Parameters::Bn254X5, big-endian):
+    Inputs = 1, 2, 3, 4
+    Output = 0x299c867db6c1fdd79dcefa40e4510b9837e60ebb1ce0663dbaa525df65250465
 */
 
 use ligetron::get_args;
@@ -35,14 +37,17 @@ use ligetron::poseidon::PoseidonContext5;
 fn main() {
     let args = get_args();
 
-    let input_str = args.get_as_c_str(1);
-    let reference_str = args.get_as_c_str(2);
-
-    let input = Bn254Fr::from_c_str(input_str);
-    let reference = Bn254Fr::from_c_str(reference_str);
+    // t = 5, so the hash takes exactly t-1 = 4 inputs; state[0] stays the
+    // (zero) domain tag and is the lane read out.
+    let inputs: Vec<Bn254Fr> = (1..=4)
+        .map(|i| Bn254Fr::from_c_str(args.get_as_c_str(i)))
+        .collect();
+    let reference = Bn254Fr::from_c_str(args.get_as_c_str(5));
 
     let mut ctx = PoseidonContext5::new();
-    ctx.update(&input);
+    for input in &inputs {
+        ctx.update(input);
+    }
     let result = ctx.finalize();
 
     result.print_dec();

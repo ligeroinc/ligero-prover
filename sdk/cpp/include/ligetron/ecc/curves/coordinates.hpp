@@ -19,7 +19,23 @@
 #include <ligetron/bn254fr_class.h>
 #include <ligetron/ff/concepts.h>
 
+/*
+ * Coordinate representations for the curve layer.
+ *
+ * ONLY affine_coordinate IS USABLE. curve_base.hpp fixes point_type =
+ * affine_coordinate<base_field_type> and declares every virtual over it.
+ *
+ * projective_coordinate and extended_coordinate are NOT PORTED and NOT SAFE. They are kept
+ * for reference only, and any attempt to instantiate one is a hard compile error -- see the
+ * static_assert in each.
+ */
+
 namespace ligetron::ecc::curves {
+
+/* Always false, but only after substitution -- a bare static_assert(false) in a template is
+ * ill-formed even when the template is never instantiated. */
+template <typename>
+inline constexpr bool coordinate_not_ported = false;
 
 template <typename Field>
 struct projective_coordinate;
@@ -48,6 +64,10 @@ struct affine_coordinate {
 
 template <typename Field>
 struct projective_coordinate {
+    static_assert(coordinate_not_ported<Field>,
+                  "projective_coordinate is not ported and not sound."
+                  "Use affine_coordinate.");
+
     Field x, y, z;
 
     bool operator==(const projective_coordinate& o) const {
@@ -68,6 +88,10 @@ struct projective_coordinate {
 
 template <typename Field>
 struct extended_coordinate {
+    static_assert(coordinate_not_ported<Field>,
+                  "extended_coordinate is not ported and not sound."
+                  " Use affine_coordinate.");
+
     Field x, y, z, t;
 
     static extended_coordinate select(const bn254fr_class& cond, const extended_coordinate& a0,

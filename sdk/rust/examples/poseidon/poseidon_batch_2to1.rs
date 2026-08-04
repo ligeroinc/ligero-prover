@@ -16,12 +16,12 @@
 
 //! Poseidon Batch 2-to-1 Hash Example
 //!
-//! This example demonstrates the vectorized Poseidon hash function for fast
-//! batch processing with 2-to-1 compression (3-ary permutation).
+//! Demonstrates the vectorized Poseidon hash function for fast batch
+//! processing with 2-to-1 compression (3-ary permutation).
 //!
 //! Arguments:
-//!     [1]: <str> Input number
-//!     [2]: <str> Reference hash
+//!     [1..2]: <str> Input numbers
+//!     [3]:    <str> Reference hash
 
 
 use ligetron::get_args;
@@ -31,15 +31,19 @@ use ligetron::poseidon::VPoseidonContext3;
 fn main() {
     let args = get_args();
 
-    let input_str = args.get_as_c_str(1);
-    let reference_str = args.get_as_c_str(2);
-
-    let input = VBn254Fr::from_c_str_scalar(input_str);
-    let reference = VBn254Fr::from_c_str_scalar(reference_str);
+    // t = 3, so the hash takes exactly t-1 = 2 inputs.
+    let inputs: Vec<VBn254Fr> = (1..=2)
+        .map(|i| VBn254Fr::from_c_str_scalar(args.get_as_c_str(i)))
+        .collect();
+    let reference = VBn254Fr::from_c_str_scalar(args.get_as_c_str(3));
 
     let mut ctx = VPoseidonContext3::<false>::new();
-    ctx.update(&input);
+    for input in &inputs {
+        ctx.update(input);
+    }
     let result = ctx.finalize();
+
+    result.print_hex();
 
     VBn254Fr::assert_equal(&result, &reference);
 }

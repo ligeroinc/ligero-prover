@@ -440,6 +440,31 @@ void bn254fr_bigint_mul_checked(bn254fr_t* out,
                                 uint32_t b_count,
                                 uint32_t bits);
 
+/** Compute the sum of two big integers, adds constraints.
+    The array `a` must have length `a_count`.
+    The array `b` must have length `b_count`.
+    The `out` array must have length max(a_count, b_count) + 1; its last limb
+    receives the carry out.
+*/
+void bn254fr_bigint_add_checked(bn254fr_t* out,
+                                const bn254fr_t* a,
+                                const bn254fr_t* b,
+                                uint32_t a_count,
+                                uint32_t b_count,
+                                uint32_t n_bits);
+
+/** Compute the difference of two big integers of `count` limbs each, adds
+    constraints.
+    The arrays `a` and `b` must both have length `count`.
+    The `out` array must have length `count + 1`; its last limb receives the
+    borrow out, i.e. the underflow flag.
+*/
+void bn254fr_bigint_sub_checked(bn254fr_t* out,
+                                const bn254fr_t* a,
+                                const bn254fr_t* b,
+                                uint32_t count,
+                                uint32_t n_bits);
+
 /** Convert big integer to proper representation taking into account carry.
     The `in` array must have length `count`.
     The `out` array must have length `count + 1`.
@@ -516,22 +541,6 @@ void bn254fr_bigint_invmod(bn254fr_t *out,
                            uint32_t a_count,
                            uint32_t m_count,
                            uint32_t bits);
-
-/** Performs big integer modulus inversion with constraints:
-    out = a^-1 mod m.
-    The `a` array must have length `a_count`.
-    The `m` and out arrays must have length `m_count`.
-*/
-void bn254fr_bigint_invmod_checked(bn254fr_t *out,
-                                   bn254fr_t *a,
-                                   bn254fr_t *m,
-                                   uint32_t a_count,
-                                   uint32_t m_count,
-                                   uint32_t bits);
-
-uint32_t bn254fr_bigint_proper_size(uint32_t n_limbs,
-                                    uint32_t n_bits,
-                                    uint32_t n_overflow_bits);
 
 LIGETRON_API(bn254fr, bn254fr_bigint_print)
 void bn254fr_bigint_print(bn254fr_t *x, uint32_t n_limbs, uint32_t n_bits);

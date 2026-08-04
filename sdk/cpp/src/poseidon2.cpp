@@ -154,6 +154,8 @@ void poseidon2_bn254_digest_final(poseidon2_bn254_context *ctx, bn254fr_class& o
     ctx->_tmp.set_bytes_big(ctx->buf, 31);
     poseidon2_bn254_digest_update(ctx, ctx->_tmp);
     out = ctx->state[0];
+
+    ctx->len = 0;
 }
 
 // ------------------------------------------------------------
@@ -240,6 +242,8 @@ void poseidon2_vbn254_digest_final(poseidon2_vbn254_context *ctx, vbn254fr_class
     ctx->_tmp.set_bytes_scalar(ctx->buf, 31);
     poseidon2_vbn254_digest_update(ctx, ctx->_tmp);
     out = ctx->state[0];
+
+    ctx->len = 0;
 }
 
 const char *poseidon2_t2_rc_str[(POSEIDON2_BN254_Rf + POSEIDON2_BN254_Rp) * 2] {

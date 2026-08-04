@@ -28,7 +28,14 @@ If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 
 #include <stdint.h>
 #include <ligetron/apidef.h>
+/* Hashes the first "len" bytes of "in" into "out",
+ * which is 32 bytes for sha2_256, 64 for sha2_512.
+ *
+ * Limits: ligetron_sha2_256 tracks the message bit count in a 32-bit word,
+ * so an input of 512 MiB or more wraps it and yields a digest that is not FIPS 180-4.
+ * ligetron_sha2_512 counts in 64 bits and has no comparable limit. */
+extern "C" void ligetron_sha2_256 (unsigned char *out, const unsigned char* in, uint32_t len);
 
-extern "C" uint32_t ligetron_sha2_256 (unsigned char *out, const unsigned char* in, uint32_t len);
+extern "C" void ligetron_sha2_512 (unsigned char *out, const unsigned char* in, uint32_t len);
 
 #endif

@@ -22,6 +22,9 @@ target_link_libraries(uint256_cpp_test ligetron)
 add_executable(prime_field_uint256_test prime_field_uint256_test.cpp)
 target_link_libraries(prime_field_uint256_test ligetron)
 
+add_executable(sha256_test sha256_test.cpp)
+target_link_libraries(sha256_test ligetron)
+
 add_executable(sha512_test sha512_test.cpp)
 target_link_libraries(sha512_test ligetron)
 

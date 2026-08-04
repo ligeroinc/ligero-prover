@@ -88,10 +88,10 @@ buffer_view::storage_type buffer_view::storage() const noexcept {
     return storage_;
 }
 
-buffer_view buffer_view::slice_bytes(size_t n_bytes, size_t from) const {
+buffer_view buffer_view::slice_bytes(size_t from, size_t n_bytes) const {
     assert(from + n_bytes <= size_bytes_);
 
-    return buffer_view(storage_, n_bytes, offset_bytes_ + from);
+    return buffer_view(storage_, offset_bytes_ + from, n_bytes);
 }
 
 // void buffer_view::destroy_source() const { }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <ligetron/sha512.h>
+#include <ligetron/sha2.h>
 #include <cstdint>
 #include <cstring>
 
@@ -75,7 +75,7 @@ static void pqchain_sha512_compress(uint64_t sha_state[8], const unsigned char* 
     for (int i = 0; i < 8; i++) sha_state[i] = sha_state[i] + sha_S[i];
 }
 
-void ligetron_sha512(unsigned char *out, const unsigned char* in, int len) {
+void ligetron_sha2_512(unsigned char *out, const unsigned char* in, uint32_t len) {
     uint64_t sha_len = 0;
     uint64_t sha_state[8];
     sha_state[0] = 0x6A09E667F3BCC908ULL; sha_state[1] = 0xBB67AE8584CAA73BULL;
@@ -89,7 +89,7 @@ void ligetron_sha512(unsigned char *out, const unsigned char* in, int len) {
         pqchain_sha512_compress(sha_state, in);
         sha_len += 128 * 8; in += 128; len -= 128;
     }
-    for (int i = 0; i < len; i++) { sha_buf[i] = in[i]; }
+    for (uint32_t i = 0; i < len; i++) { sha_buf[i] = in[i]; }
     sha_len += len * 8; sha_buf[len++] = 0x80;
     if (len > 112) {
         while (len < 128) { sha_buf[len++] = 0; }
