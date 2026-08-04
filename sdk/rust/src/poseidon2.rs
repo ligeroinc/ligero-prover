@@ -55,6 +55,23 @@ impl Default for Poseidon2Params {
 }
 
 /// Poseidon2 hash context for BN254 field elements (t=2)
+///
+/// Sponge with rate 1 and capacity 1: input is absorbed into `state[0]` only,
+/// and `state[0]` is the only lane read out, so `state[1]` is a full 254-bit
+/// capacity.
+///
+/// # There are two absorb APIs and they operate at different granularities
+/// and should not be mixed in the same context:
+///
+/// [`digest_update`](Self::digest_update) absorbs one field element as a whole
+/// block, immediately. [`digest_update_bytes`](Self::digest_update_bytes) is a
+/// byte stream: it absorbs each full 31-byte block and *buffers* the trailing
+/// partial block until another `digest_update_bytes` fills it or
+/// [`digest_final`](Self::digest_final) pads it.
+///
+/// `digest_final` consumes the context: it appends 0x80, zero-pads to 31 bytes,
+/// absorbs that block and returns state[0].
+///  Call [`digest_init`](Self::digest_init) before reusing it.
 pub struct Poseidon2Context {
     state: [Bn254Fr; 2],
     params: Poseidon2Params,
@@ -127,7 +144,10 @@ impl Poseidon2Context {
         }
     }
 
-    /// Finalize the hash computation and get the result
+    /// Finalize the hash computation and get the result.
+    ///
+    /// Consumes the context: call [`digest_init`](Self::digest_init) before
+    /// reusing it.
     pub fn digest_final(&mut self) -> Bn254Fr {
         self.buffer[self.buffer_len] = 0x80;
         self.buffer_len += 1;
@@ -140,6 +160,8 @@ impl Poseidon2Context {
         self.temp.set_bytes_big(&self.buffer[..31]);
         self.state[0].addmod_checked(&self.temp);
         self.permute();
+
+        self.buffer_len = 0;
 
         self.state[0].clone()
     }
@@ -229,6 +251,10 @@ impl Poseidon2Context {
 }
 
 /// Poseidon2 hash context for vectorized BN254 field elements (t=2)
+///
+/// Same contract as [`Poseidon2Context`]: rate 1 / capacity 1, the two absorb
+/// APIs must not be mixed on one context, and `digest_final` consumes the
+/// context.
 pub struct VPoseidon2Context {
     state: [VBn254Fr; 2],
     params: Poseidon2Params,
@@ -296,7 +322,10 @@ impl VPoseidon2Context {
         }
     }
 
-    /// Finalize the hash computation and get the result
+    /// Finalize the hash computation and get the result.
+    ///
+    /// Consumes the context: call [`digest_init`](Self::digest_init) before
+    /// reusing it.
     pub fn digest_final(&mut self) -> VBn254Fr {
         self.buffer[self.buffer_len] = 0x80;
         self.buffer_len += 1;
@@ -309,6 +338,8 @@ impl VPoseidon2Context {
         self.temp.set_bytes_scalar(&self.buffer[..31]);
         self.state[0].addmod_vec(&self.temp);
         self.permute();
+
+        self.buffer_len = 0;
 
         self.state[0].clone()
     }

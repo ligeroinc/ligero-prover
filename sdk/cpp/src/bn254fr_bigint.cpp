@@ -52,7 +52,8 @@ static uint32_t proper_size(uint32_t n_limbs,
     return n_limbs + n_add_limbs;
 }
 
-static constexpr uint32_t log_ceil(uint32_t n) {
+// Bit length of n: floor(log2(n)) + 1, and 0 for n == 0.
+static constexpr uint32_t bit_length(uint32_t n) {
     uint32_t n_temp = n;
     for (uint32_t i = 0; i < 254; i++) {
         if (n_temp == 0) {
@@ -61,6 +62,11 @@ static constexpr uint32_t log_ceil(uint32_t n) {
         n_temp = n_temp / 2;
     }
     return 254;
+}
+
+// ceil(log2(n)): the smallest k with 2^k >= n. ceil_log2(0) = ceil_log2(1) = 0.
+static constexpr uint32_t ceil_log2(uint32_t n) {
+    return n <= 1 ? 0 : bit_length(n - 1);
 }
 
 // Decomposes bn254 value into bits with constraints and deallocates result.
@@ -191,14 +197,14 @@ bool bn254fr_bigint::is_zero() const {
 bn254fr_class bn254fr_bigint::eqz() const {
     bn254fr_t sum;
     bn254fr_alloc(sum);
+    bn254fr_set_u32(sum, 0);
 
-    bn254fr_class zero;
 
     for (auto && limb : limbs()) {
         // eq = a[i] == 0
         bn254fr_t eq;
         bn254fr_alloc(eq);
-        bn254fr_eq_checked(eq, limb, zero.data());
+        bn254fr_eqz_checked(eq, limb);
 
         // sum += eq
         bn254fr_t tmp;
@@ -228,8 +234,8 @@ bn254fr_class bn254fr_bigint::eq(const bn254fr_bigint &a,
                                  const bn254fr_bigint &b) {
     bn254fr_t sum;
     bn254fr_alloc(sum);
+    bn254fr_set_u32(sum, 0);
 
-    bn254fr_class zero;
 
     auto a_count = a.limbs_count();
     auto b_count = b.limbs_count();
@@ -257,7 +263,7 @@ bn254fr_class bn254fr_bigint::eq(const bn254fr_bigint &a,
             // eq = b[i] == 0
             bn254fr_t eq;
             bn254fr_alloc(eq);
-            bn254fr_eq_checked(eq, b.limbs()[i], zero.data());
+            bn254fr_eqz_checked(eq, b.limbs()[i]);
 
             // sum += eq
             bn254fr_t tmp;
@@ -274,7 +280,7 @@ bn254fr_class bn254fr_bigint::eq(const bn254fr_bigint &a,
             // eq = a[i] == 0
             bn254fr_t eq;
             bn254fr_alloc(eq);
-            bn254fr_eq_checked(eq, a.limbs()[i], zero.data());
+            bn254fr_eqz_checked(eq, a.limbs()[i]);
 
             // sum += eq
             bn254fr_t tmp;
@@ -471,6 +477,7 @@ void bn254fr_bigint::set_bytes_big(const unsigned char *bytes, uint32_t sz) {
     uint32_t n_full = sz / limb_bytes;
     uint32_t rem = sz % limb_bytes;
 
+    // A leading partial group is the most significant limb.
     if (rem != 0) {
         bn254fr_set_bytes_checked(limbs_[n_limbs - 1],
                                   bytes,
@@ -478,8 +485,9 @@ void bn254fr_bigint::set_bytes_big(const unsigned char *bytes, uint32_t sz) {
                                   1);
     }
 
+    // The full groups fill the limbs below it, most significant first.
     for (uint32_t i = 0; i < n_full; ++i) {
-        bn254fr_set_bytes_checked(limbs_[n_limbs - i - 1],
+        bn254fr_set_bytes_checked(limbs_[n_full - i - 1],
                                   bytes + rem + i * limb_bytes,
                                   limb_bytes,
                                   1);
@@ -629,7 +637,7 @@ uint32_t bn254fr_bigint::mul_no_carry_res_bits_count(const bn254fr_bigint &x,
                                                      const bn254fr_bigint &y) {
     return x.bits_count() +
            y.bits_count() +
-           log_ceil(std::min(x.limbs_count(), y.limbs_count()));
+           ceil_log2(std::min(x.limbs_count(), y.limbs_count()));
 }
 
 bn254fr_bigint bn254fr_bigint::mul_no_carry(const bn254fr_bigint &x,
@@ -659,8 +667,6 @@ bn254fr_bigint bn254fr_bigint::mul_unchecked(const bn254fr_bigint &x,
 
 std::tuple<bn254fr_bigint, bn254fr_bigint>
 bn254fr_bigint::idiv(const bn254fr_bigint &a, const bn254fr_bigint &b) {
-    bn254fr_class zero;
-    bn254fr_class one{1};
 
     // perform big integer division without constraints
     auto [q, r] = idiv_unchecked(a, b);
@@ -692,13 +698,13 @@ bn254fr_bigint::idiv(const bn254fr_bigint &a, const bn254fr_bigint &b) {
 
     for (uint32_t i = a.limbs_count(), sz = add_res_prop.limbs_count();
          i < sz; ++i) {
-        bn254fr_assert_equal(add_res_prop.limbs()[i], zero.data());
+        bn254fr_assert_equal_u32(add_res_prop.limbs()[i], 0);
     }
 
     // check r < b
 
     auto lt_res = lt(r, b);
-    bn254fr_assert_equal(lt_res.data(), one.data());
+    bn254fr_assert_equal_u32(lt_res.data(), 1);
 
     return {q, r};
 }
@@ -722,8 +728,6 @@ bn254fr_bigint::idiv_unchecked(const bn254fr_bigint &x,
 
 bn254fr_bigint bn254fr_bigint::rem(const bn254fr_bigint &a,
                                    const bn254fr_bigint &m) {
-    bn254fr_class zero;
-    bn254fr_class one{1};
 
     // convert a to proper representation without constraints
     auto a_prop = a.to_proper_unchecked();
@@ -736,7 +740,7 @@ bn254fr_bigint bn254fr_bigint::rem(const bn254fr_bigint &a,
 
     // check that out < m
     auto lt_res = lt(out, m_prop);
-    bn254fr_class::assert_equal(lt_res, one);
+    bn254fr_assert_equal_u32(lt_res.data(), 1);
 
     // check q * m + out === a with constraints
 
@@ -754,7 +758,7 @@ bn254fr_bigint bn254fr_bigint::rem(const bn254fr_bigint &a,
 
     // check sub_res proper representation is zero
     for (auto && limb : sub_res_proper.limbs()) {
-        bn254fr_assert_equal(limb, zero.data());
+        bn254fr_assert_equal_u32(limb, 0);
     }
 
     return out;
@@ -770,22 +774,12 @@ bn254fr_bigint bn254fr_bigint::invmod(const bn254fr_bigint &a,
                                       const bn254fr_bigint &m) {
     auto res = invmod_unchecked(a, m);
 
-    bn254fr_t zero;
-    bn254fr_t one;
-
-    bn254fr_alloc(zero);
-    bn254fr_alloc(one);
-    bn254fr_set_u32(one, 1);
-
     auto mul_res = bn254fr_bigint::mul_no_carry(res, a);
     auto mul_res_rem = bn254fr_bigint::rem(mul_res, m);
-    bn254fr_assert_equal(mul_res_rem.limbs()[0], one);
+    bn254fr_assert_equal_u32(mul_res_rem.limbs()[0], 1);
     for (uint32_t i = 1, sz = mul_res_rem.limbs_count(); i < sz; ++i) {
-        bn254fr_assert_equal(mul_res_rem.limbs()[i], zero);
+        bn254fr_assert_equal_u32(mul_res_rem.limbs()[i], 0);
     }
-
-    bn254fr_free(zero);
-    bn254fr_free(one);
 
     return res;
 }

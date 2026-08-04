@@ -217,16 +217,11 @@ uint64_t uint256::get_u64() const {
 
     uint256_get_words_checked(words, data());
 
-    bn254fr_t zero;
-    bn254fr_alloc(zero);
-
     for (size_t i = 1; i < UINT256_NLIMBS; ++i) {
-        bn254fr_assert_equal(words[i], zero);
+        bn254fr_assert_equal_u32(words[i], 0);
     }
 
     auto res = bn254fr_get_u64_checked(words[0]);
-    
-    bn254fr_free(zero);
 
     for (size_t i = 0; i < UINT256_NLIMBS; ++i) {
         bn254fr_free(words[i]);

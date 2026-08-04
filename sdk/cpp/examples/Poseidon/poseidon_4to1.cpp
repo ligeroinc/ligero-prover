@@ -14,27 +14,43 @@
  * limitations under the License.
  */
 
+/*
+ * 4-to-1 Poseidon hash (compatible with Solana's `sol_poseidon`,
+ * width t=5, four inputs, one output).
+ *
+ * Pass four input field elements + the expected reference output as argv:
+ *   ./poseidon_4to1.wasm <in0> <in1> <in2> <in3> <ref>
+ *
+ * Example arguments:
+ *   in0 = 1
+ *   in1 = 2
+ *   in3 = 3
+ *   in4 = 4
+ *   out = 0x299c867db6c1fdd79dcefa40e4510b9837e60ebb1ce0663dbaa525df65250465
+ */
+
 #include <ligetron/api.h>
 #include <ligetron/poseidon.h>
 
 using namespace ligetron;
 
-/* Poseidon Hash
- * Test vectors:
- * In  = 42
- * Out = 11900205294312547303566650979164934562713672929231722670359450569937552281134
- */
-
 int main(int argc, char *argv[]) {
-    const char* input_num = argv[1];
-    const char* ref_num   = argv[2];
+    if (argc < 6) {
+        print_str("Usage: poseidon_4to1 <in0> <in1> <in2> <in3> <ref>", 53);
+        assert_one(0);
+        return 1;
+    }
 
-    bn254fr_class input(input_num), ref(ref_num);
+    bn254fr_class in0(argv[1]), in1(argv[2]), in2(argv[3]), in3(argv[4]),
+                  ref(argv[5]);
 
     poseidon_context<poseidon_permx5_254bit_5>::global_init();
     poseidon_context<poseidon_permx5_254bit_5> ctx;
 
-    ctx.digest_update(input);
+    ctx.digest_update(in0);
+    ctx.digest_update(in1);
+    ctx.digest_update(in2);
+    ctx.digest_update(in3);
     ctx.digest_final();
 
     bn254fr_class::assert_equal(ctx.state[0], ref);

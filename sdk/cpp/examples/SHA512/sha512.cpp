@@ -15,7 +15,7 @@
  */
 
 #include <ligetron/api.h>
-#include <ligetron/sha512.h>
+#include <ligetron/sha2.h>
 
 #include <cstdio>
 
@@ -26,14 +26,12 @@
  ************************************************************/
 
 int main(int argc, char *argv[]) {
-    int args_len[argc];
-    args_len_get(argv, args_len);
-
     unsigned char out[64];
 
-    const unsigned char* ref = reinterpret_cast<const unsigned char*>(argv[2]);
+    int len = *reinterpret_cast<int*>(argv[2]);
+    const unsigned char* ref = reinterpret_cast<const unsigned char*>(argv[3]);
     
-    ligetron_sha512(out, (const unsigned char*)argv[1], args_len[1] - 1);
+    ligetron_sha2_512(out, (const unsigned char*)argv[1], len);
 
     for (int i = 0; i < 64; i++) {
         assert_one(out[i] == ref[i]);

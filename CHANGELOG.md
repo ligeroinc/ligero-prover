@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.0](https://github.com/ligeroinc/ligetron/compare/v1.6.0...v1.7.0) (2026-08-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sdk:** ligetron_sha512 is renamed to ligetron_sha2_512 and its declaration moves from sha512.h to sha2.h, which is deleted. Its len parameter is now uint32_t rather than int. In Rust, sha2::ligetron_sha512 becomes sha2::ligetron_sha2_512; the idiomatic sha2::sha256 / sha2::sha512 are unaffected.
+* **sdk:** the SHA-2 functions are regrouped under one module. sha512::sha512 becomes sha2::sha512 and sha2::sha2_256 becomes sha2::sha256; the module sha512 is removed. The ligetron_* C-parity forms keep their names.
+* **sdk:** ecdsa_context::verify(sig, msg) is renamed to verify_sha256(sig, msg).
+* **sdk:** <ligetron/poseidon_s.h> is removed — include <ligetron/poseidon.h>. poseidon_s_context becomes poseidon_context and poseidon_s_vec_context becomes poseidon_vec_context.
+
+### Features
+
+* **sdk:** Add ed25519 public key derivation to ecc::eddsa_context and correct the name of the "eddsa_context::point_decompress" function ([0c41465](https://github.com/ligeroinc/ligetron/commit/0c414658da712458eca9703d907b902181a95c9a))
+* **sdk:** move per-curve constants into eddsa_params and add eddsa_context::from_seed ([1a7f806](https://github.com/ligeroinc/ligetron/commit/1a7f8064e66df734242e66c7f52baad83458ec5d))
+* **sdk:** Port ecc, ff and bigint layers and missing hash functions from C++ SDK to the Rust SDK ([37c8058](https://github.com/ligeroinc/ligetron/commit/37c8058c52a4d877ecaa27808fae9099fa0aa318))
+* **sdk:** replace the redundant Poseidon-v1 sponge with the existing sol_poseidon-compatible construction ([814398a](https://github.com/ligeroinc/ligetron/commit/814398a3b0b96b13dc0d6ad08ca99a1aa7ce43c1))
+* **sdk:** split ecdsa_context::verify into verify_digest and verify_sha256 ([9489c3a](https://github.com/ligeroinc/ligetron/commit/9489c3abef72ffa6de28bf132360d22d8342e3d4))
+
+
+### Bug Fixes
+
+* **sdk:** add the prime_field storage set_u32 that set_zero/set_one call ([4710c5b](https://github.com/ligeroinc/ligetron/commit/4710c5b89b3def87530dd119cd24f4d99a6a7d59))
+* **sdk:** bind uint256_invmod_checked's comparand to the constant ([612204f](https://github.com/ligeroinc/ligetron/commit/612204f07460485bad55a8b18955d915031f9814))
+* **sdk:** bind uint256.cpp's shared constants to their values ([c94c177](https://github.com/ligeroinc/ligetron/commit/c94c17782b210a276f5108c695ae84dc5905ac70))
+* **sdk:** bn254fr_bigint::set_bytes_big drops leading bytes ([1502d73](https://github.com/ligeroinc/ligetron/commit/1502d73cfca4ac0d76042248df63341a02aec036))
+* **sdk:** correct SHA-256 padding and unify the SHA-2 signatures ([cb6b565](https://github.com/ligeroinc/ligetron/commit/cb6b5658ec20bc2407a9e76cc3fa045f95d699ad))
+* **sdk:** Fixed the test_assert_equal_bytes test ([b07c368](https://github.com/ligeroinc/ligetron/commit/b07c368ee931a4839d9bd89728615fff72eecc3b))
+* **sdk:** make the unported coordinate types a compile error, not a trap ([ff8a9af](https://github.com/ligeroinc/ligetron/commit/ff8a9afc429481723a249dd631297e892758d941))
+* **sdk:** reset the byte buffer length in poseidon2 digest_final ([e7efeb3](https://github.com/ligeroinc/ligetron/commit/e7efeb37f6844cfe854629bc01df25dece0d297f))
+* **sdk:** unify the SHA-2 API on ligetron_sha2_512 with an unsigned length ([f416a4a](https://github.com/ligeroinc/ligetron/commit/f416a4a40b666598310baee50be6d1bf328c49b9))
+* **webgpu:** correct transposed parameters in buffer_view::slice_bytes ([08852bf](https://github.com/ligeroinc/ligetron/commit/08852bffb197d9f90b3e2503be385bd4f446baf4))
+* **webgpu:** size the vals vector in vbn254fr_set_ui ([a39a29d](https://github.com/ligeroinc/ligetron/commit/a39a29d7aa5dd1c90010953e593aee93d5705348))
+
+
+### Performance Improvements
+
+* **sdk:** size three widths from the derivation instead of a margin ([287208a](https://github.com/ligeroinc/ligetron/commit/287208adf6c014a2977f55d81d7f327732737a94))
+
 ## [1.6.0](https://github.com/ligeroinc/ligetron/compare/v1.5.0...v1.6.0) (2026-07-24)
 
 

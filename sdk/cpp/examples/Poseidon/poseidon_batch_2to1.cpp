@@ -14,20 +14,37 @@
  * limitations under the License.
  */
 
+/*
+ * Vectorized 2-to-1 Poseidon hash (compatible with Solana's
+ * `sol_poseidon`, width t=3, two inputs, one output).
+ *
+ * Pass two inputs + the expected reference output as argv:
+ *   ./poseidon_batch_2to1.wasm <in0> <in1> <ref>
+ * 
+ * Built-in test vector:
+ *   in0 = 0x0101010101010101010101010101010101010101010101010101010101010101
+ *   in1 = 0x0202020202020202020202020202020202020202020202020202020202020202
+ *   out = 0x0d54e1938f8a8c1c7deb5e0355f26319207b84fe9ca2ce1b26e735c829821990
+ */
+
 #include <ligetron/poseidon.h>
 
 using namespace ligetron;
+using poseidon_context_fast_t =
+    poseidon_vec_context<poseidon_permx5_254bit_3, true>;
 
 int main(int argc, char *argv[]) {
-    const char* input_num = argv[1];
-    const char* ref_num   = argv[2];
+    const char* in0_str = argv[1];
+    const char* in1_str = argv[2];
+    const char* ref_str = argv[3];
 
-    vbn254fr_class input(input_num), ref(ref_num);
+    vbn254fr_class in0(in0_str), in1(in1_str), ref(ref_str);
 
-    poseidon_vec_context<poseidon_permx5_254bit_3>::global_init();
-    poseidon_vec_context<poseidon_permx5_254bit_3> ctx;
+    poseidon_context_fast_t::global_init();
+    poseidon_context_fast_t ctx;
 
-    ctx.digest_update(input);
+    ctx.digest_update(in0);
+    ctx.digest_update(in1);
     ctx.digest_final();
 
     ctx.state[0].print_hex();

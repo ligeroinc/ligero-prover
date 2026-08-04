@@ -175,8 +175,8 @@ void do_test_idiv(const str_vector &a_str,
 
     auto [q, r] = bn254fr_bigint::idiv(a, b);
 
-    // bn254fr_bigint_assert_equal(q, exp_q, a_str.size());
-    // bn254fr_bigint_assert_equal(r, exp_r, b_str.size());
+    bn254fr_bigint_assert_equal(q, exp_q);
+    bn254fr_bigint_assert_equal(r, exp_r);
 }
 
 void test_idiv() {
@@ -215,14 +215,8 @@ void do_test_invmod(const str_vector &a_str,
 
     assert_one(exp_str.size() == m_str.size());
 
-    bn254fr_bigint res{m_str.size()};
+    auto res = bn254fr_bigint::invmod(a, m);
 
-    bn254fr_bigint_invmod_checked(res.limbs().data(),
-                                  a.limbs().data(),
-                                  m.limbs().data(),
-                                  a.limbs_count(),
-                                  m.limbs_count(),
-                                  64);
     bn254fr_bigint_assert_equal(res, exp);
 }
 
@@ -476,7 +470,7 @@ int main(int argc, char * argv[]) {
     test_mul(false);
     test_mul(true);;
     test_idiv();
-    // test_invmod();
+    test_invmod();
     test_eq();
     test_eqz();
     test_set_bytes_little();

@@ -36,6 +36,27 @@ pub fn assert_constant<T: Into<i32>>(val: T) {
     }
 }
 
+/// Assert that a value is concrete (i.e. not symbolic).
+pub fn assert_is_concrete<T: Into<i32>>(val: T) {
+    unsafe {
+        _assert_is_concrete(val.into());
+    }
+}
+
+/// Reinterpret a witness value as a concrete `u32`.
+///
+/// The result is a plain integer the program may branch on; the caller is responsible for
+/// constraining it back against its witness (typically with
+/// [`bn254fr::assert_equal_u32`](crate::bn254fr::assert_equal_u32)).
+pub fn witness_cast_u32(val: u32) -> u32 {
+    unsafe { _witness_cast_u32(val) }
+}
+
+/// Reinterpret a witness value as a concrete `u64`. See [`witness_cast_u32`].
+pub fn witness_cast_u64(val: u64) -> u64 {
+    unsafe { _witness_cast_u64(val) }
+}
+
 pub fn print_str(s: &[u8]) {
     unsafe { _print_str(s.as_ptr(), s.len() as i32) }
 }
@@ -192,6 +213,18 @@ extern "C" {
     /// Assert that a value is constant
     #[link_name = "assert_constant"]
     fn _assert_constant(value: i32);
+
+    /// Assert that a value is concrete
+    #[link_name = "assert_is_concrete"]
+    fn _assert_is_concrete(value: i32);
+
+    /// Reinterpret a witness value as a concrete u32
+    #[link_name = "witness_cast_u32"]
+    fn _witness_cast_u32(value: u32) -> u32;
+
+    /// Reinterpret a witness value as a concrete u64
+    #[link_name = "witness_cast_u64"]
+    fn _witness_cast_u64(value: u64) -> u64;
 
     /// Print a string
     #[link_name = "print_str"]

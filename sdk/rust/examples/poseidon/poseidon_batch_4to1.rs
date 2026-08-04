@@ -16,12 +16,13 @@
 
 //! Poseidon Batch 4-to-1 Hash Example
 //!
-//! This example demonstrates the vectorized Poseidon hash function for fast
-//! batch processing with 4-to-1 compression (5-ary permutation).
+//! Demonstrates the vectorized Poseidon hash function with Montgomery
+//! constants for fast batch processing with 4-to-1 compression (5-ary
+//! permutation).
 //!
 //! Arguments:
-//!     [1]: <str> Input number
-//!     [2]: <str> Reference hash
+//!     [1..4]: <str> Input numbers
+//!     [5]:    <str> Reference hash
 
 
 use ligetron::get_args;
@@ -31,15 +32,19 @@ use ligetron::poseidon::VPoseidonContext5;
 fn main() {
     let args = get_args();
 
-    let input_str = args.get_as_c_str(1);
-    let reference_str = args.get_as_c_str(2);
-
-    let input = VBn254Fr::from_c_str_scalar(input_str);
-    let reference = VBn254Fr::from_c_str_scalar(reference_str);
+    // t = 5, so the hash takes exactly t-1 = 4 inputs.
+    let inputs: Vec<VBn254Fr> = (1..=4)
+        .map(|i| VBn254Fr::from_c_str_scalar(args.get_as_c_str(i)))
+        .collect();
+    let reference = VBn254Fr::from_c_str_scalar(args.get_as_c_str(5));
 
     let mut ctx = VPoseidonContext5::<true>::new();
-    ctx.update(&input);
+    for input in &inputs {
+        ctx.update(input);
+    }
     let result = ctx.finalize();
+
+    result.print_hex();
 
     VBn254Fr::assert_equal(&result, &reference);
 }

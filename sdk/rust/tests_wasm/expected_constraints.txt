@@ -1,0 +1,43 @@
+# Constraint counts per vm-test suite: <suite> <linear> <quadratic>.
+#
+# Regenerate with:  UPDATE_COUNTS=1 tests_wasm/run.sh
+# A diff here is a semantic change to the circuit -- review it, don't just take it.
+sha256_test                      781442 3424938
+sha512_test                      259222 1727118
+bn254fr_test                     547 6271
+bn254fr_bigint_test              4796 13061
+uint256_test                     15485 80901
+prime_field_test                 59795 171899
+p256_test                        4367145 9852195
+ecdsa_p256_test                  12340960 25870581
+ed25519_test                     2984783 5547788
+ed25519_eddsa_test               9473307 16567649
+negative_on_curve_test           3089 6310
+negative_scalar_binding_test     989650 2299153
+negative_msm_identity_test       989650 2299153
+negative_sign_boolean_test       989619 2298929
+negative_magnitude_nonzero_test  989583 2299089
+negative_div_multiply_back_test  487 2952
+negative_div_non_unique_test     518 3212
+negative_uint256_invmod_test     715 3870
+negative_bigint_idiv_test        136 1254
+negative_bigint_rem_test         146 934
+negative_bigint_invmod_test      809 2025
+negative_get_u64_high_limbs_test 4 64
+negative_set_words_binding_test  8 256
+negative_from_bits_binding_test  264 0
+negative_bigint_idiv_non_unique_test 136 1254
+negative_bigint_rem_non_unique_test 146 934
+negative_bigint_from_limbs_binding_test 8 0
+negative_bigint_set_binding_test 8 0
+negative_bigint_add_surplus_test 13 0
+negative_bigint_sub_surplus_test 13 0
+negative_bigint_lt_binding_test  37 207
+negative_bigint_add_carry_binding_test 16 130
+negative_bigint_proper_top_test  56 391
+negative_bigint_signed_copy_test 37 268
+negative_ff_import_u64_test      2 0
+negative_ff_import_u32_test      1 0
+negative_ff_zero_mod_test        942 1939
+negative_div_b_pad_test          467 2692
+negative_bigint_invmod_rest_test 1280 3775

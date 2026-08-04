@@ -14,6 +14,35 @@
  * limitations under the License.
  */
 
+/*
+ * Poseidon (v1) over BN254 Fr -- Solana `sol_poseidon`-compatible.
+ *
+ * BN254 Fr field, x^5 S-box, R_F=8 full rounds, R_P=57 (t=3) or R_P=60 (t=5)
+ * partial rounds, with the iden3/circomlib round constants and MDS matrix
+ * (defined in poseidon_constant.cpp via the parameter structs below). These are
+ * bit-identical to the constants light-poseidon -- which `sol_poseidon`
+ * dispatches to -- uses.
+ *
+ * This is a fixed-input compression function matching light-poseidon's
+ * `Poseidon::<Fr>::new_circom(n)`:
+ *
+ *   - Width t (= Param::t) is fixed; the hash takes exactly t-1 inputs.
+ *   - Initial state = [domain_tag, in_0, in_1, ..., in_{t-2}].
+ *   - domain_tag defaults to 0 (matching `new_circom`).
+ *   - One permutation is run on digest_final().
+ *   - Output = state[0].
+ *
+ * SECURITY INVARIANT: state[0] is the capacity lane. It holds the domain tag,
+ * is never fed input, and is the only lane read out. Do NOT absorb into it.
+ * A construction that absorbs into every lane has zero capacity, which makes
+ * the permutation's invertibility a total break of collision and preimage
+ * resistance -- an attacker picks any output state and inverts to a message in
+ * O(1). The sponge variant removed in v1.7.0 had exactly that flaw.
+ *
+ * Calling digest_update() more than (Param::t - 1) times is a usage error;
+ * setting a non-zero domain_tag will diverge from sol_poseidon.
+ */
+
 #ifndef __LIGETRON_POSEIDON__
 #define __LIGETRON_POSEIDON__
 
@@ -72,25 +101,21 @@ struct poseidon_context {
         for (int i = 0; i < Param::t; i++) {
             state[i].set_u32(0);
         }
+        curr_ = 1;
+    }
+
+    void set_domain_tag(const bn254fr_class& tag) {
+        state[0] = tag;
     }
 
     void digest_update(bn254fr_class& data) {
-        // Absorb to the sponge
         addmod(state[curr_], state[curr_], data);
-
         ++curr_;
-
-        if (curr_ >= Param::t) {
-            internal_round_update();
-            curr_ = 0;
-        }
     }
 
     void digest_final() {
-        if (curr_ != 0) {
-            internal_round_update();
-            curr_ = 0;
-        }
+        permutation();
+        curr_ = 1;
     }
 
 protected:
@@ -113,9 +138,9 @@ protected:
         bn254fr_class tmp;
         for (int row = 0; row < Param::t; row++) {
             for (int col = 0; col < Param::t; col++) {
-                mulmod(tmp,
-                             MDS[row * Param::t + col],
-                             state[col]);
+                mulmod_constant(tmp,
+                                state[col],
+                                MDS[row * Param::t + col]);
                 addmod(state_new[row],
                              state_new[row],
                              tmp);
@@ -127,7 +152,7 @@ protected:
         }
     }
 
-    void internal_round_update() {
+    void permutation() {
         constexpr size_t R_f = Param::R_F / 2;
 
         size_t ARC_counter = 0;
@@ -145,7 +170,7 @@ protected:
             perm(ARC_counter, true);
     }
 
-    size_t curr_ = 0;
+    size_t curr_ = 1;
 
 public:
     bn254fr_class state[Param::t];
@@ -181,25 +206,21 @@ struct poseidon_vec_context {
         for (int i = 0; i < Param::t; i++) {
             state[i].set_ui_scalar(0);
         }
+        curr_ = 1;
+    }
+
+    void set_domain_tag(const vbn254fr_class& tag) {
+        state[0] = tag;
     }
 
     void digest_update(const vbn254fr_class& data) {
-        // Absorb to the sponge
         addmod(state[curr_], state[curr_], data);
-
         ++curr_;
-
-        if (curr_ >= Param::t) {
-            internal_round_update();
-            curr_ = 0;
-        }
     }
 
     void digest_final() {
-        if (curr_ != 0) {
-            internal_round_update();
-            curr_ = 0;
-        }
+        permutation();
+        curr_ = 1;
     }
 
     void perm(size_t &ARC_counter, bool full_round = true) {
@@ -241,7 +262,7 @@ struct poseidon_vec_context {
         }
     }
 
-    void internal_round_update() {
+    void permutation() {
         constexpr size_t R_f = Param::R_F / 2;
 
         size_t ARC_counter = 0;
@@ -261,7 +282,7 @@ struct poseidon_vec_context {
 
     // ------------------------------------------------------------
 
-    size_t curr_ = 0;
+    size_t curr_ = 1;
     vbn254fr_class state[Param::t];
 };
 

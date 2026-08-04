@@ -27,7 +27,6 @@
  * Sig    = 92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da
             085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00
  * Msg    = 72
- * Res    = "pass"
  */
 
 #include <ligetron/api.h>
@@ -38,8 +37,8 @@ using namespace ligetron::ecc;
 using Ctx = eddsa_context<curves::ed25519>;
 
 int main(int argc, char* argv[]) {
-    if (argc != 5) {
-        printf("Expect 3 arguments (pk, sig, msg, result), got %d\n", argc - 1);
+    if (argc != 4) {
+        printf("Expect 3 arguments (pk, sig, msg), got %d\n", argc - 1);
         exit(-1);
     }
 
@@ -66,7 +65,7 @@ int main(int argc, char* argv[]) {
     Ctx ec{pk_bytes};
     auto valid = ec.verify(sig_bytes, msg_bytes);
 
-    bn254fr_assert_equal_u32(valid.data(), (std::strcmp(argv[4], "fail") == 0) ? 0u : 1u);
+    bn254fr_assert_equal_u32(valid.data(), 1u);
 
     return 0;
 }

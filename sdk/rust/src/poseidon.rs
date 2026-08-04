@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//! Poseidon Hash Function for Ligetron
+//! Poseidon (v1) Hash Function for Ligetron -- Solana `sol_poseidon`-compatible.
 //!
 //! ## Algorithm Details
 //!
@@ -25,12 +25,29 @@
 //! - **Full Rounds**: Apply S-box to all state elements
 //! - **Partial Rounds**: Apply S-box only to first element (efficiency)
 //!
+//! ## Construction
+//!
+//! This is a fixed-input compression function matching light-poseidon's
+//! `Poseidon::<Fr>::new_circom(n)` -- which is what Solana's `sol_poseidon`
+//! dispatches to:
+//!
+//! - Width `T` is fixed; the hash takes exactly `T - 1` inputs.
+//! - Initial state = `[domain_tag, in_0, ..., in_{T-2}]`.
+//! - `domain_tag` defaults to 0 (matching `new_circom`).
+//! - One permutation runs on `finalize()`.
+//! - Output = `state[0]`.
+//!
+//! ## Security invariant
+//!
+//! `state[0]` is the **capacity** lane: it holds the domain tag, is never fed
+//! input, and is the only lane read out. Do not absorb into it.
+//!
 //! ## Security Parameters
 //!
 //! - **t=3**: 8 full rounds, 57 partial rounds
 //! - **t=5**: 8 full rounds, 60 partial rounds
 
-use crate::bn254fr::{Bn254Fr, mulmod_checked};
+use crate::bn254fr::{Bn254Fr, mulmod_checked, mulmod_constant_checked};
 use crate::vbn254fr::{VBn254Fr, VBn254FrConstant, mulmod_vec, mulmod_constant, mont_mul_constant};
 use crate::poseidon_constant::*;
 use lazy_static::lazy_static;
@@ -152,7 +169,8 @@ impl<P: PoseidonParam> PoseidonContext<P> {
 
         let ctx = PoseidonContext {
             state: vec![Bn254Fr::from_u32(0); P::T],
-            curr: 0,
+            // state[0] is the capacity / domain-tag lane; absorption starts at 1.
+            curr: 1,
             arc_const,
             mds_const,
             _params: std::marker::PhantomData,
@@ -164,26 +182,27 @@ impl<P: PoseidonParam> PoseidonContext<P> {
         for i in 0..P::T {
             self.state[i].set_u32(0);
         }
-        self.curr = 0;
+        self.curr = 1;
     }
 
+    /// Overrides the domain tag in `state[0]`. Defaults to 0, which is what
+    /// `sol_poseidon` / light-poseidon's `new_circom` use -- setting anything
+    /// else diverges from them.
+    pub fn set_domain_tag(&mut self, tag: &Bn254Fr) {
+        self.state[0] = tag.clone();
+    }
+
+    /// Absorbs one input. Must be called at most `T - 1` times; a further call
+    /// would write into the capacity lane and is a usage error (it panics on
+    /// the out-of-bounds index rather than silently weakening the hash).
     pub fn update(&mut self, data: &Bn254Fr) {
-        // Absorb to the sponge
         self.state[self.curr].addmod_checked(data);
-
         self.curr += 1;
-
-        if self.curr >= P::T {
-            self.internal_round_update();
-            self.curr = 0;
-        }
     }
 
     pub fn finalize(&mut self) -> Bn254Fr {
-        if self.curr != 0 {
-            self.internal_round_update();
-            self.curr = 0;
-        }
+        self.internal_round_update();
+        self.curr = 1;
         self.state[0].clone()
     }
 
@@ -226,7 +245,9 @@ impl<P: PoseidonParam> PoseidonContext<P> {
             let mut sum = Bn254Fr::from_u32(0);
             for j in 0..P::T {
                 let mut temp = Bn254Fr::new();
-                mulmod_checked(&mut temp, &self.mds_const[i * P::T + j], &old_state[j]);
+                // The MDS entry is a compile-time constant, so the cheaper
+                // assert_mulc constraint applies (matches the C++ SDK, #371).
+                mulmod_constant_checked(&mut temp, &old_state[j], &self.mds_const[i * P::T + j]);
                 sum.addmod_checked(&temp);
             }
             self.state[i] = sum;
@@ -292,7 +313,8 @@ impl<P: PoseidonParam, const USE_MONTGOMERY: bool> VPoseidonContext<P, USE_MONTG
     pub fn new() -> Self {
         let ctx = VPoseidonContext {
             state: (0..P::T).map(|_| VBn254Fr::from_ui_scalar(0)).collect(),
-            curr: 0,
+            // state[0] is the capacity / domain-tag lane; absorption starts at 1.
+            curr: 1,
             _params: std::marker::PhantomData,
         };
         ctx
@@ -302,25 +324,23 @@ impl<P: PoseidonParam, const USE_MONTGOMERY: bool> VPoseidonContext<P, USE_MONTG
         for i in 0..P::T {
             self.state[i].set_ui_scalar(0);
         }
-        self.curr = 0;
+        self.curr = 1;
     }
 
+    /// Overrides the domain tag in `state[0]`. See `PoseidonContext::set_domain_tag`.
+    pub fn set_domain_tag(&mut self, tag: &VBn254Fr) {
+        self.state[0] = tag.clone();
+    }
+
+    /// Absorbs one input. Must be called at most `T - 1` times.
     pub fn update(&mut self, data: &VBn254Fr) {
         self.state[self.curr].addmod_vec(data);
-
         self.curr += 1;
-
-        if self.curr >= P::T {
-            self.internal_round_update();
-            self.curr = 0;
-        }
     }
 
     pub fn finalize(&mut self) -> VBn254Fr {
-        if self.curr != 0 {
-            self.internal_round_update();
-            self.curr = 0;
-        }
+        self.internal_round_update();
+        self.curr = 1;
         self.state[0].clone()
     }
 
@@ -393,8 +413,18 @@ pub type VPoseidonContext5<const USE_MONTGOMERY: bool> = VPoseidonContext<Poseid
 /// Type alias for vectorized poseidon_t3 context
 pub type VPoseidonContext3<const USE_MONTGOMERY: bool> = VPoseidonContext<PoseidonPermx5Bit254T3, USE_MONTGOMERY>;
 
-/// Convenience function to compute Poseidon hash with t=5
+/// Convenience function to compute the Poseidon hash with t=5.
+///
+/// Takes at most 4 inputs (`T - 1`); this is a fixed-input compression
+/// function, not a variable-length sponge. Equivalent to `sol_poseidon`
+/// (`Parameters::Bn254X5`, big-endian) over the same 4 inputs.
+///
+/// # Panics
+/// If `inputs.len() > 4`, which would overrun the capacity lane.
 pub fn poseidon_t5_hash(inputs: &[Bn254Fr]) -> Bn254Fr {
+    assert!(inputs.len() <= PoseidonPermx5Bit254T5::T - 1,
+            "poseidon_t5_hash takes at most {} inputs, got {}",
+            PoseidonPermx5Bit254T5::T - 1, inputs.len());
     let mut ctx = PoseidonContext5::new();
 
     for input in inputs {
@@ -404,8 +434,18 @@ pub fn poseidon_t5_hash(inputs: &[Bn254Fr]) -> Bn254Fr {
     ctx.finalize()
 }
 
-/// Convenience function to compute Poseidon hash with t=3
+/// Convenience function to compute the Poseidon hash with t=3.
+///
+/// Takes at most 2 inputs (`T - 1`); this is a fixed-input compression
+/// function, not a variable-length sponge. Equivalent to `sol_poseidon`
+/// (`Parameters::Bn254X5`, big-endian) over the same 2 inputs.
+///
+/// # Panics
+/// If `inputs.len() > 2`, which would overrun the capacity lane.
 pub fn poseidon_t3_hash(inputs: &[Bn254Fr]) -> Bn254Fr {
+    assert!(inputs.len() <= PoseidonPermx5Bit254T3::T - 1,
+            "poseidon_t3_hash takes at most {} inputs, got {}",
+            PoseidonPermx5Bit254T3::T - 1, inputs.len());
     let mut ctx = PoseidonContext3::new();
 
     for input in inputs {
@@ -418,8 +458,15 @@ pub fn poseidon_t3_hash(inputs: &[Bn254Fr]) -> Bn254Fr {
 
 // ============= Vectorized Convenience Functions =============
 
-/// Convenience function to compute vectorized Poseidon hash with t=5
+/// Convenience function to compute the vectorized Poseidon hash with t=5.
+/// Takes at most 4 inputs (`T - 1`).
+///
+/// # Panics
+/// If `inputs.len() > 4`.
 pub fn vposeidon_t5_hash<const USE_MONTGOMERY: bool>(inputs: &[VBn254Fr]) -> VBn254Fr {
+    assert!(inputs.len() <= PoseidonPermx5Bit254T5::T - 1,
+            "vposeidon_t5_hash takes at most {} inputs, got {}",
+            PoseidonPermx5Bit254T5::T - 1, inputs.len());
     let mut ctx = VPoseidonContext5::<USE_MONTGOMERY>::new();
 
     for input in inputs {
@@ -429,8 +476,15 @@ pub fn vposeidon_t5_hash<const USE_MONTGOMERY: bool>(inputs: &[VBn254Fr]) -> VBn
     ctx.finalize()
 }
 
-/// Convenience function to compute vectorized Poseidon hash with t=3
+/// Convenience function to compute the vectorized Poseidon hash with t=3.
+/// Takes at most 2 inputs (`T - 1`).
+///
+/// # Panics
+/// If `inputs.len() > 2`.
 pub fn vposeidon_t3_hash<const USE_MONTGOMERY: bool>(inputs: &[VBn254Fr]) -> VBn254Fr {
+    assert!(inputs.len() <= PoseidonPermx5Bit254T3::T - 1,
+            "vposeidon_t3_hash takes at most {} inputs, got {}",
+            PoseidonPermx5Bit254T3::T - 1, inputs.len());
     let mut ctx = VPoseidonContext3::<USE_MONTGOMERY>::new();
 
     for input in inputs {

@@ -20,7 +20,6 @@
  * argv[1]: pubkey (Qx, Qy) in big-endian hex string
  * argv[2]: signature (R, S) in big-endian hex string
  * argv[3]: plain message in big-endian hex string
- * argv[4]: expected result string ("pass" or "fail")
  *
  * Sample test vector:
  * 
@@ -32,7 +31,6 @@
  * Qy = 970eed7aa2bc48651545949de1dddaf0127e5965ac85d1243d6f60e7dfaee927
  * R = bf96b99aa49c705c910be33142017c642ff540c76349b9dab72f981fd9347f4f
  * S = 17c55095819089c2e03b9cd415abdf12444e323075d98f31920b9e0f57ec871c
- * Result = "pass"
  */
 
 #include <ligetron/api.h>
@@ -43,8 +41,8 @@ using namespace ligetron::ecc;
 using Ctx = ecdsa_context<curves::p256>;
 
 int main(int argc, char* argv[]) {
-    if (argc != 5) {
-        printf("Expect 3 arguments (pk, sig, msg, result), got %d\n", argc - 1);
+    if (argc != 4) {
+        printf("Expect 3 arguments (pk, sig, msg), got %d\n", argc - 1);
         exit(-1);
     }
 
@@ -69,9 +67,9 @@ int main(int argc, char* argv[]) {
         std::as_bytes(std::span<const char>{argv[3], static_cast<size_t>(args_len[3])});
 
     Ctx ec{pk_bytes};
-    auto valid = ec.verify(sig_bytes, msg_bytes);
+    auto valid = ec.verify_sha256(sig_bytes, msg_bytes);
 
-    bn254fr_assert_equal_u32(valid.data(), (std::strcmp(argv[4], "fail") == 0) ? 0u : 1u);
+    bn254fr_assert_equal_u32(valid.data(), 1u);
 
     return 0;
 }

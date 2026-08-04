@@ -46,6 +46,24 @@ struct poseidon2_vbn254_context {
     uint32_t len;
 };
 
+/*
+ * Sponge with rate 1 and capacity 1: input is absorbed into state[0] only, and
+ * state[0] is the only lane read out, so state[1] is a full 254-bit capacity.
+ *
+ * There are two absorb APIs and they operate at different granularities and
+ * should not be mixed in the same context:
+ *
+ *   digest_update()       - absorbs one field element as a whole block, now.
+ *   digest_update_bytes() - a byte stream: it absorbs each full 31-byte block
+ *                           and BUFFERS the trailing partial block until either
+ *                           another update_bytes() fills it or digest_final()
+ *                           pads it.
+ *
+ * digest_final() consumes the context: it appends 0x80, zero-pads to 31 bytes,
+ * absorbs that block and returns state[0].
+ * Call digest_init() before reusing a context.
+ */
+
 poseidon2_bn254_context *poseidon2_bn254_context_new();
 void poseidon2_bn254_context_free(poseidon2_bn254_context *ctx);
 void poseidon2_bn254_digest_init(poseidon2_bn254_context *ctx);

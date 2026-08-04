@@ -9,8 +9,8 @@ set(CMAKE_EXECUTABLE_SUFFIX ".wasm")
 
 # Edit Distance
 # ------------------------------------------------------------
-add_executable(edit edit_distance/edit_distance.cpp)
-target_link_libraries(edit ligetron)
+add_executable(edit_distance edit_distance/edit_distance.cpp)
+target_link_libraries(edit_distance ligetron)
 
 # SHA256
 # ------------------------------------------------------------
@@ -29,6 +29,9 @@ target_link_libraries(eth_address_verify ligetron)
 
 # Poseidon
 # ------------------------------------------------------------
+add_executable(poseidon_2to1 Poseidon/poseidon_2to1.cpp)
+target_link_libraries(poseidon_2to1 ligetron)
+
 add_executable(poseidon_4to1 Poseidon/poseidon_4to1.cpp)
 target_link_libraries(poseidon_4to1 ligetron)
 
@@ -37,17 +40,6 @@ target_link_libraries(poseidon_batch_2to1 ligetron)
 
 add_executable(poseidon_batch_4to1 Poseidon/poseidon_batch_4to1.cpp)
 target_link_libraries(poseidon_batch_4to1 ligetron)
-
-# Poseidon S (sol_poseidon-compatible)
-# ------------------------------------------------------------
-add_executable(poseidon_s_2to1 Poseidon/poseidon_s_2to1.cpp)
-target_link_libraries(poseidon_s_2to1 ligetron)
-
-add_executable(poseidon_s_4to1 Poseidon/poseidon_s_4to1.cpp)
-target_link_libraries(poseidon_s_4to1 ligetron)
-
-add_executable(poseidon_s_batch_2to1 Poseidon/poseidon_s_batch_2to1.cpp)
-target_link_libraries(poseidon_s_batch_2to1 ligetron)
 
 # Poseidon 2
 # ------------------------------------------------------------
@@ -81,9 +73,3 @@ target_link_options(ecdsa_p256_verify PRIVATE "-sSTACK_SIZE=100000000")
 add_executable(ecdsa_secp256k1_verify ECDSA/secp256k1_sha256_sigver.cpp)
 target_link_libraries(ecdsa_secp256k1_verify ligetron)
 target_link_options(ecdsa_secp256k1_verify PRIVATE "-sSTACK_SIZE=100000000")
-
-# Payroll Verification
-# ------------------------------------------------------------
-add_executable(payroll_verification payroll_verify/payroll-verification.cpp)
-target_link_libraries(payroll_verification ligetron)
-target_link_options(payroll_verification PRIVATE "-sSTACK_SIZE=100000000")

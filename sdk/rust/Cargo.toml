@@ -1,13 +1,11 @@
 [package]
 name = "ligetron"
-version = "1.2.0"
+version = "1.7.0"
 edition = "2021"
 
 [dependencies]
 paste = "1.0.15"
 lazy_static = "1.4"
-base64 = "0.22.1"
-hex = "0.4.3"
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.
@@ -26,6 +24,10 @@ path = "examples/edit_distance/edit_distance.rs"
 [[example]]
 name = "sha256"
 path = "examples/sha256/sha256.rs"
+
+[[example]]
+name = "poseidon_2to1"
+path = "examples/poseidon/poseidon_2to1.rs"
 
 [[example]]
 name = "poseidon_4to1"
@@ -54,3 +56,228 @@ path = "examples/eddsa/eddsa_verify_no_args.rs"
 [[example]]
 name = "eddsa_batch"
 path = "examples/eddsa/eddsa_batch_verify_no_args.rs"
+
+[[example]]
+name = "ed25519_verify"
+path = "examples/eddsa/ed25519_sigver.rs"
+
+[[example]]
+name = "ecdsa_p256_verify"
+path = "examples/ecdsa/p256_sha256_sigver.rs"
+
+[[example]]
+name = "ecdsa_secp256k1_verify"
+path = "examples/ecdsa/secp256k1_sha256_sigver.rs"
+
+[[example]]
+name = "eth_address_verify"
+path = "examples/keccak256/eth_address_verify.rs"
+
+[[example]]
+name = "sha512"
+path = "examples/sha512/sha512.rs"
+
+# ---- VM test programs -------------------------------------------------------
+# These are wasm binaries run under the Ligetron VM (see tests_wasm/run.sh), not
+# `cargo test` units. `required-features` keeps a plain `cargo build` building only
+# the library, so no existing consumer pays for them.
+
+[features]
+default = []
+vm-tests = []
+fault-injection = []
+
+[[bin]]
+name = "bn254fr_bigint_test"
+path = "tests_wasm/bn254fr_bigint_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "sha256_test"
+path = "tests_wasm/sha256_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "sha512_test"
+path = "tests_wasm/sha512_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "bn254fr_test"
+path = "tests_wasm/bn254fr_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "prime_field_test"
+path = "tests_wasm/prime_field_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "uint256_test"
+path = "tests_wasm/uint256_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "p256_test"
+path = "tests_wasm/p256_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "ecdsa_p256_test"
+path = "tests_wasm/ecdsa_p256_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "ed25519_test"
+path = "tests_wasm/ed25519_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "ed25519_eddsa_test"
+path = "tests_wasm/ed25519_eddsa_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "negative_on_curve_test"
+path = "tests_wasm/negative_on_curve_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "negative_scalar_binding_test"
+path = "tests_wasm/negative_scalar_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_msm_identity_test"
+path = "tests_wasm/negative_msm_identity_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_sign_boolean_test"
+path = "tests_wasm/negative_sign_boolean_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_magnitude_nonzero_test"
+path = "tests_wasm/negative_magnitude_nonzero_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_div_multiply_back_test"
+path = "tests_wasm/negative_div_multiply_back_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_div_non_unique_test"
+path = "tests_wasm/negative_div_non_unique_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_uint256_invmod_test"
+path = "tests_wasm/negative_uint256_invmod_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_idiv_test"
+path = "tests_wasm/negative_bigint_idiv_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_rem_test"
+path = "tests_wasm/negative_bigint_rem_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_invmod_test"
+path = "tests_wasm/negative_bigint_invmod_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_get_u64_high_limbs_test"
+path = "tests_wasm/negative_get_u64_high_limbs_test.rs"
+required-features = ["vm-tests"]
+
+[[bin]]
+name = "negative_set_words_binding_test"
+path = "tests_wasm/negative_set_words_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_from_bits_binding_test"
+path = "tests_wasm/negative_from_bits_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_idiv_non_unique_test"
+path = "tests_wasm/negative_bigint_idiv_non_unique_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_rem_non_unique_test"
+path = "tests_wasm/negative_bigint_rem_non_unique_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_from_limbs_binding_test"
+path = "tests_wasm/negative_bigint_from_limbs_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_set_binding_test"
+path = "tests_wasm/negative_bigint_set_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_add_surplus_test"
+path = "tests_wasm/negative_bigint_add_surplus_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_sub_surplus_test"
+path = "tests_wasm/negative_bigint_sub_surplus_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_lt_binding_test"
+path = "tests_wasm/negative_bigint_lt_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_add_carry_binding_test"
+path = "tests_wasm/negative_bigint_add_carry_binding_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_proper_top_test"
+path = "tests_wasm/negative_bigint_proper_top_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_signed_copy_test"
+path = "tests_wasm/negative_bigint_signed_copy_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_ff_import_u64_test"
+path = "tests_wasm/negative_ff_import_u64_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_ff_import_u32_test"
+path = "tests_wasm/negative_ff_import_u32_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_ff_zero_mod_test"
+path = "tests_wasm/negative_ff_zero_mod_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_div_b_pad_test"
+path = "tests_wasm/negative_div_b_pad_test.rs"
+required-features = ["vm-tests", "fault-injection"]
+
+[[bin]]
+name = "negative_bigint_invmod_rest_test"
+path = "tests_wasm/negative_bigint_invmod_rest_test.rs"
+required-features = ["vm-tests", "fault-injection"]

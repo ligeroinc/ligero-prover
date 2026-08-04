@@ -141,13 +141,19 @@ struct vbn254fr_module : public host_module {
         u32 ui_ptr  = ctx_->stack_pop().as_u32();
         u32 fp_addr = ctx_->stack_pop().as_u32();
 
+        if (len > executor_.message_size()) {
+            throw wasm_trap(std::format("{}: length {} exceeds message size {}",
+                                        __func__, len, executor_.message_size()));
+        }
+
         auto *mem = ctx_->memory_data().data();
 
         u32 fp_handle = load_vbn254(fp_addr);
         u32 *mem32 = reinterpret_cast<u32*>(mem + ui_ptr);
 
         buffer_t x = get_buffer_from_offset(fp_handle);
-        std::vector<device_bignum> vals;
+
+        std::vector<device_bignum> vals(len);
         for (size_t i = 0; i < len; i++) {
             vals[i] = mem32[i];
         }

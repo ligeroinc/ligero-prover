@@ -32,7 +32,7 @@ template <uint32_t N>
 class bn254fr_const_value: public bn254fr_value {
 public:
     bn254fr_const_value() {
-        bn254fr_set_u32(data(), N);
+        bn254fr_set_u32_checked(data(), N);
     }
 };
 
@@ -143,22 +143,24 @@ void uint256_set_u64(uint256_t out, uint64_t x) {
 }
 
 void uint256_set_bn254_checked(uint256_t out, const bn254fr_t x) {
-    bn254fr_t zero;
-    bn254fr_alloc(zero);
-
     bn254fr_t words[UINT256_NLIMBS];
     for (size_t i = 0; i < UINT256_NLIMBS; ++i) {
         bn254fr_alloc(words[i]);
     }
 
+    /* x is a single field element, so it lands in limb 0 and every limb above it is zero.
+     * Set them: bn254fr_alloc does not define the value (see bn254fr.h), and
+     * uint256_set_words_checked constrains all UINT256_NLIMBS of them. */
     bn254fr_copy(words[0], x);
+    for (size_t i = 1; i < UINT256_NLIMBS; ++i) {
+        bn254fr_set_u32(words[i], 0);
+    }
+
     uint256_set_words_checked(out, words);
 
     for (size_t i = 0; i < UINT256_NLIMBS; ++i) {
         bn254fr_free(words[i]);
     }
-
-    bn254fr_free(zero);
 }
 
 
@@ -505,14 +507,12 @@ void bn254fr_sub_checked_with_borrow(bn254fr_t out,
                                      const bn254fr_t b,
                                      uint32_t n_bits) {
 
-    bn254fr_t mul_res;
     bn254fr_t a_minus_b;
     bn254fr_t sum;
     bn254fr_t sum_bits[256];
     bn254fr_t pow_2;
     bn254fr_t n_bits_bn;
 
-    bn254fr_alloc(mul_res);
     bn254fr_alloc(a_minus_b);
     bn254fr_alloc(sum);
     bn254fr_alloc(pow_2);
@@ -529,18 +529,17 @@ void bn254fr_sub_checked_with_borrow(bn254fr_t out,
     bn254fr_set_u32(pow_2, 1);
     bn254fr_set_u32(n_bits_bn, n_bits);
     bn254fr_shlmod(pow_2, pow_2, n_bits_bn);
-    bn254fr_addmod(sum, pow_2, a_minus_b);
+    bn254fr_addmod_checked(sum, pow_2, a_minus_b);
 
     // decompose (1 << Bits) + a - b into bits
-    bn254fr_to_bits(sum_bits, sum, n_bits + 1);
+    bn254fr_to_bits_checked(sum_bits, sum, n_bits + 1);
 
     // borrow value is the ~msb of (1 << Bits) + a - b (result of a < b comparison)
     bn254fr_submod_checked(borrow, bn254fr_const<1>.data(), sum_bits[n_bits]);
 
     // out is the composition of bits except of msb
-    bn254fr_from_bits(out, sum_bits, n_bits);
+    bn254fr_from_bits_checked(out, sum_bits, n_bits);
 
-    bn254fr_free(mul_res);
     bn254fr_free(a_minus_b);
     bn254fr_free(sum);
     bn254fr_free(pow_2);
@@ -593,7 +592,7 @@ void bn254fr_sub_3_checked_with_borrow(bn254fr_t out,
     bn254fr_submod_checked(borrow, bn254fr_const<1>.data(), sum_bits[n_bits]);
 
     // out is the composition of bits except of msb
-    bn254fr_from_bits(out, sum_bits, n_bits);
+    bn254fr_from_bits_checked(out, sum_bits, n_bits);
 
     // deallocaing all used values
     bn254fr_free(b_plus_c);
@@ -607,43 +606,78 @@ void bn254fr_sub_3_checked_with_borrow(bn254fr_t out,
     }
 }
 
-void uint256_sub_checked(uint256_t out,
-                         bn254fr_t underflow,
-                         const uint256_t a,
-                         const uint256_t b) {
+/// Calculates difference of two big integers represented as arrays of bn254 limbs,
+/// with adding constraints. Both operands must have `count` limbs; `out` must have
+/// `count + 1`, and the extra limb receives the final borrow -- the underflow flag.
+///
+/// The counterpart of bn254fr_bigint_add_checked, and the reason uint256_sub_checked
+/// is now handle aliasing like uint256_add_checked and uint256_mul_checked already were.
+///
+/// One difference from the add side: the last borrow is produced directly in out[count]
+/// instead of being copied and re-bound. bn254fr_submod_checked writes into whatever
+/// destination it is handed, so there is nothing to bridge here.
+void bn254fr_bigint_sub_checked(bn254fr_t *out,
+                                const bn254fr_t *a,
+                                const bn254fr_t *b,
+                                uint32_t count,
+                                uint32_t n_bits) {
+    if (count == 1) {
+        bn254fr_sub_checked_with_borrow(out[0], out[1], a[0], b[0], n_bits);
+        return;
+    }
 
-    // calculating difference and borrow for first two limbs
+    // calculating difference and borrow for the first limb
     bn254fr_t curr_borrow;
     bn254fr_alloc(curr_borrow);
-    bn254fr_sub_checked_with_borrow(out->limbs[0],
-                                    curr_borrow,
-                                    a->limbs[0],
-                                    b->limbs[0],
-                                    uint256_nbits);
+    bn254fr_sub_checked_with_borrow(out[0], curr_borrow, a[0], b[0], n_bits);
 
-    // calculating difference of other libs taking into account borrow
-    // calculated on previous step
-    for (size_t i = 1; i < UINT256_NLIMBS; ++i) {
+    // calculating difference of the middle limbs, taking into account the borrow
+    // calculated on the previous step
+    for (size_t i = 1; i < count - 1; ++i) {
         bn254fr_t new_borrow;
         bn254fr_alloc(new_borrow);
 
-        bn254fr_sub_3_checked_with_borrow(out->limbs[i],
+        bn254fr_sub_3_checked_with_borrow(out[i],
                                           new_borrow,
-                                          a->limbs[i],
-                                          b->limbs[i],
+                                          a[i],
+                                          b[i],
                                           curr_borrow,
-                                          uint256_nbits);
+                                          n_bits);
 
         // deallocating curr_borrow and moving new_borrow handle to it
         bn254fr_free(curr_borrow);
         curr_borrow[0] = new_borrow[0];
     }
 
-    // copying last curr_borrow value to resulting underflow
-    bn254fr_copy(underflow, curr_borrow);
-    bn254fr_assert_equal(underflow, curr_borrow);
+    // the last limb's borrow IS the caller's underflow flag, so write it straight there
+    bn254fr_sub_3_checked_with_borrow(out[count - 1],
+                                      out[count],
+                                      a[count - 1],
+                                      b[count - 1],
+                                      curr_borrow,
+                                      n_bits);
 
     bn254fr_free(curr_borrow);
+}
+
+void uint256_sub_checked(uint256_t out,
+                         bn254fr_t underflow,
+                         const uint256_t a,
+                         const uint256_t b) {
+
+    // calculating big integer difference using handles from out and underflow as output
+    bn254fr_t bigint_out[UINT256_NLIMBS + 1];
+    for (size_t i = 0; i < UINT256_NLIMBS; ++i) {
+        bigint_out[i][0] = out->limbs[i][0];
+    }
+
+    bigint_out[UINT256_NLIMBS][0] = underflow[0];
+
+    bn254fr_bigint_sub_checked(bigint_out,
+                               a->limbs,
+                               b->limbs,
+                               UINT256_NLIMBS,
+                               uint256_nbits);
 }
 
 // Splits bn254 value into two N-bit and M-bit values
@@ -683,7 +717,8 @@ void split_bn254_3(bn254fr_t out_1,
     bn254fr_free(tmp);
 }
 
-constexpr uint32_t log_ceil(uint32_t n) {
+// Bit length of n: floor(log2(n)) + 1, and 0 for n == 0.
+constexpr uint32_t bit_length(uint32_t n) {
     uint32_t n_temp = n;
     for (uint32_t i = 0; i < 254; i++) {
         if (n_temp == 0) {
@@ -694,12 +729,19 @@ constexpr uint32_t log_ceil(uint32_t n) {
     return 254;
 }
 
+// ceil(log2(n)): the smallest k with 2^k >= n, so summing n values each below 2^w stays
+// under 2^(w + ceil_log2(n)). ceil_log2(0) = ceil_log2(1) = 0.
+constexpr uint32_t ceil_log2(uint32_t n) {
+    return n <= 1 ? 0 : bit_length(n - 1);
+}
+
 // Adds constraints for range check for array of bn254 original limbs
 // with overflow and result limbs with carry
 void range_check(bn254fr_t *in,
                  bn254fr_t *out,
                  uint32_t count,
-                 uint32_t n_bits) {
+                 uint32_t n_bits,
+                 uint32_t max_terms) {
     // checking range of all output limbs
     for (size_t i = 0; i < count; ++i) {
         check_bits(out[i], n_bits);
@@ -720,7 +762,7 @@ void range_check(bn254fr_t *in,
     bn254fr_set_u32(n_bits_bn, n_bits);
     bn254fr_powmod(n_bits_pow, n_bits_pow, n_bits_bn);
 
-    size_t n_carry_bits = n_bits + log_ceil(count);
+    size_t n_carry_bits = n_bits + ceil_log2(max_terms);
 
     // checking carry for the first limb
     {
@@ -800,7 +842,7 @@ void range_check_signed(const bn254fr_t *in,
     bn254fr_set_u32(n_bits_bn, out_bits);
     bn254fr_shlmod(n_bits_pow, n_bits_pow, n_bits_bn);
 
-    size_t n_carry_bits = in_bits - out_bits + log_ceil(out_count);
+    size_t n_carry_bits = (in_bits > out_bits + 1) ? (in_bits - out_bits + 1) : 3;
 
     // caclulate and check carry for the first limbs
     {
@@ -869,7 +911,7 @@ void range_check_signed(const bn254fr_t *in,
     }
 
     // check that last running carry is zero
-    bn254fr_assert_equal(running_carry, bn254fr_const<0>.data());
+    bn254fr_assert_equal_u32(running_carry, 0U);
 
     bn254fr_free(n_bits_bn);
     bn254fr_free(n_bits_pow);
@@ -890,7 +932,7 @@ uint32_t bn254fr_bigint_mul_checked_no_carry_bits(uint32_t a_limbs,
                                                   uint32_t a_bits,
                                                   uint32_t b_limbs,
                                                   uint32_t b_bits) {
-    return a_bits + b_bits + log_ceil(std::min(a_limbs, b_limbs));
+    return a_bits + b_bits + ceil_log2(std::min(a_limbs, b_limbs));
 }
 
 template <size_t N>
@@ -1065,7 +1107,8 @@ void bn254fr_bigint_mul_checked(bn254fr_t *out,
                                                     bits);
 
     // check ranges of the result
-    range_check(mul_no_carry_res, out, mul_no_carry_res_count, bits);
+    range_check(mul_no_carry_res, out, mul_no_carry_res_count, bits,
+                std::min(a_count, b_count));
 
     // deallocating temporary values
     for (size_t i = 0; i < mul_no_carry_res_count; ++i) {
@@ -1200,7 +1243,13 @@ void uint512_idiv_normalized_checked(uint256_t q_low,
         }
 
         mul_q[UINT256_NLIMBS][0] = q_high[0];
-        bn254fr_alloc(mul_b[UINT256_NLIMBS]);       // = 0
+
+        // q is 256 + 64 bits wide, so it needs a fifth limb; b is padded to match.
+        // The pad is SET and CONSTRAINED to zero: a freshly allocated handle is an
+        // unconstrained witness the prover chooses, and a nonzero one lands straight
+        // in the product that the multiply-back then compares against a.
+        bn254fr_alloc(mul_b[UINT256_NLIMBS]);
+        bn254fr_set_u32_checked(mul_b[UINT256_NLIMBS], 0U);
 
         bn254fr_bigint_mul_checked(mul_out,
                                    mul_q,
@@ -1234,8 +1283,11 @@ void uint512_idiv_normalized_checked(uint256_t q_low,
             add_q_b[i][0] = mul_out[i][0];
         }
 
+        // r is zero-extended to the product width. Same reasoning as the b pad above:
+        // set and constrained, not merely allocated.
         for (size_t i = UINT256_NLIMBS; i < add_arg_size; ++i) {
-            bn254fr_alloc(add_r[i]);     // = 0
+            bn254fr_alloc(add_r[i]);
+            bn254fr_set_u32_checked(add_r[i], 0U);
         }
 
         bn254fr_bigint_add_checked(add_out,
@@ -1260,10 +1312,8 @@ void uint512_idiv_normalized_checked(uint256_t q_low,
         bn254fr_assert_equal(add_out[UINT256_NLIMBS + i], a_high->limbs[i]);
     }
 
-    bn254fr_assert_equal(add_out[UINT256_NLIMBS * 2],
-                         bn254fr_const<0>.data());
-    bn254fr_assert_equal(add_out[UINT256_NLIMBS * 2 + 1],
-                         bn254fr_const<0>.data());
+    bn254fr_assert_equal_u32(add_out[UINT256_NLIMBS * 2], 0U);
+    bn254fr_assert_equal_u32(add_out[UINT256_NLIMBS * 2 + 1], 0U);
 
     // checking r < b
     bn254fr_t lt_res;
@@ -1273,7 +1323,7 @@ void uint512_idiv_normalized_checked(uint256_t q_low,
                               b->limbs,
                               UINT256_NLIMBS,
                               uint256_nbits);
-    bn254fr_assert_equal(lt_res, bn254fr_const<1>.data());
+    bn254fr_assert_equal_u32(lt_res, 1U);
     bn254fr_free(lt_res);
 
     // deallocating used bn254 values
@@ -1331,7 +1381,7 @@ void uint256_eq_checked(bn254fr_t out, const uint256_t a, const uint256_t b) {
 }
 
 void uint256_invmod_checked(uint256_t out, const uint256_t a, const uint256_t m) {
-    uint256_t mul_low, mul_high, div_low, div_r, one, zero;
+    uint256_t mul_low, mul_high, div_low, div_r;
     bn254fr_t div_high;
 
     uint256_alloc(mul_low);
@@ -1339,21 +1389,21 @@ void uint256_invmod_checked(uint256_t out, const uint256_t a, const uint256_t m)
     uint256_alloc(div_low);
     bn254fr_alloc(div_high);
     uint256_alloc(div_r);
-    uint256_alloc(one);
-
-    uint256_set_u32(one, 1U);
 
     uint256_invmod(out, a, m);
     uint256_mul_checked(mul_low, mul_high, out, a);
     uint512_idiv_normalized_checked(div_low, div_high, div_r, mul_low, mul_high, m);
-    uint256_assert_equal(div_r, one);
+
+    bn254fr_assert_equal_u32(div_r->limbs[0], 1U);
+    for (size_t i = 1; i < UINT256_NLIMBS; ++i) {
+        bn254fr_assert_equal_u32(div_r->limbs[i], 0U);
+    }
 
     uint256_free(mul_low);
     uint256_free(mul_high);
     uint256_free(div_low);
     bn254fr_free(div_high);
     uint256_free(div_r);
-    uint256_free(one);
 }
 
 void uint256_mux(uint256_t out,

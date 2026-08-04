@@ -183,8 +183,8 @@ void test_assert_equal_bytes() {
 
     bn254fr_t pub_bn;
     bn254fr_alloc(pub_bn);
-    bn254fr_set_bytes(pub_bn, pub_bytes, sizeof(pub_bytes), -1);
-    bn254fr_assert_equal_bytes(pub_bn, pub_bytes, sizeof(pub_bytes), -1);
+    bn254fr_set_bytes(pub_bn, pub_bytes, sizeof(pub_u64), -1);
+    bn254fr_assert_equal_bytes(pub_bn, pub_bytes, sizeof(pub_u64), -1);
     bn254fr_free(pub_bn);
 
     bn254fr_t priv_bn;

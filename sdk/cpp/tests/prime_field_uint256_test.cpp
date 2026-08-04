@@ -56,6 +56,30 @@ void test_set_get_uint256() {
     uint256::assert_equal(x, y);
 }
 
+/* set_zero and set_one had no caller anywhere in the tree, and their bodies called a
+ * storage.set_u32() that did not exist.
+ * These two tests exist to keep the bodies instantiated.
+ */
+void test_set_zero() {
+    test_field_element fx;
+    set_uint256(fx, uint256{12345});
+
+    fx.set_zero();
+
+    uint256 zero{uint64_t{0}};
+    uint256::assert_equal(to_uint256(fx), zero);
+}
+
+void test_set_one() {
+    test_field_element fx;
+    set_uint256(fx, uint256{12345});
+
+    fx.set_one();
+
+    uint256 one{uint64_t{1}};
+    uint256::assert_equal(to_uint256(fx), one);
+}
+
 void test_print() {
     const char *str =
         "241978572001512527289694654294400568637203164540116421040";
@@ -70,11 +94,12 @@ void test_ctor_uint256() {
     uint256 y = to_uint256(fx);
     uint256::assert_equal(x, y);
 
-    // // construction from uint256 with reduction
-    // uint256 large{"0xffffffff00000001000000000000000000000001ffffffffffffffffffffffff"};
-    // uint256 exp_large{"0x1000000000000000000000000"};
-    // test_field_element flarge{large, true};
-    // assert_equal(exp_large, to_uint256(flarge));
+    // construction from a uint256 above the prime, reduced on the way in.
+    // The input is p + 2^96, so it reduces to 2^96.
+    uint256 large{"0xffffffff00000001000000000000000000000001ffffffffffffffffffffffff"};
+    uint256 exp_large{"0x1000000000000000000000000"};
+    test_field_element flarge{test_field::storage_type{large}, true};
+    uint256::assert_equal(exp_large, to_uint256(flarge));
 }
 
 void test_ctor_int() {
@@ -112,15 +137,16 @@ void test_add() {
     // no overflow
     do_test_add("10", "20", "30");
 
-    // // no overflow, larger than Prime
-    // do_test_add("0xffffffff00000001000000000000000000000000fffffffffffffffffffffffe",   // prime - 1
-    //             "2",
-    //             "1");
+    // sum exceeds the prime, so the result wraps: (p - 1) + 2 == 1
+    do_test_add("0xffffffff00000001000000000000000000000000fffffffffffffffffffffffe",   // prime - 1
+                "2",
+                "1");
 
-    // // overflow
-    // do_test_add("0xffffffff00000001000000000000000000000000fffffffffffffffffffffffe",   // prime - 1
-    //             "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffd",   // prime - 2
-    //             "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
+    // both operands near the prime, so the sum overflows 256 bits as well:
+    // (p - 1) + (p - 2) == 2p - 3 == p - 3
+    do_test_add("0xffffffff00000001000000000000000000000000fffffffffffffffffffffffe",   // prime - 1
+                "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffd",   // prime - 2
+                "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffc");
 }
 
 void do_test_sub(const std::string &a_str,
@@ -142,10 +168,10 @@ void test_sub() {
                 "400",
                 "100");
 
-    // underflow
-    // do_test_sub("9",
-    //             "10",
-    //             "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffe");  // prime - 1
+    // underflow: 9 - 10 == -1 == p - 1
+    do_test_sub("9",
+                "10",
+                "0xffffffff00000001000000000000000000000000fffffffffffffffffffffffe");  // prime - 1
 }
 
 void do_test_mul(const std::string &a_str,
@@ -157,9 +183,8 @@ void do_test_mul(const std::string &a_str,
     test_field_element exp{uint256{exp_str.c_str()}};
 
     auto res = a * b;
-    to_uint256(res);
 
-//    assert_equal(to_uint256(res), to_uint256(exp));
+    uint256::assert_equal(to_uint256(res), to_uint256(exp));
 }
 
 void test_mul() {
@@ -495,6 +520,9 @@ int main(int argc, char *argv[]) {
     test_eqz();
 
     test_to_bits();
+
+    test_set_zero();
+    test_set_one();
 
     test_import_u32();
     test_export_u32();
