@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Payment proof benchmark</title>
+    <style>
+      :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+      body { max-width: 1280px; margin: 36px auto; padding: 0 24px; }
+      h1 { margin-bottom: 8px; font-size: 30px; }
+      p { max-width: 900px; }
+      button { padding: 10px 16px; margin: 0 8px 8px 0; font: inherit; cursor: pointer; }
+      button:disabled { cursor: wait; }
+      progress { width: 100%; height: 18px; }
+      .table-scroll { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0 28px; }
+      th, td { padding: 10px 12px; border-bottom: 1px solid #8886; text-align: right; white-space: nowrap; }
+      th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+      thead { background: #8881; }
+      .muted { color: #777; font-size: 14px; }
+      #status { min-height: 24px; font-weight: 600; }
+      #logs { max-height: 360px; overflow: auto; white-space: pre-wrap; font: 13px/1.4 ui-monospace, monospace; }
+      details { margin: 18px 0; }
+      summary { cursor: pointer; }
+      .error { color: #c43939; }
+    </style>
+  </head>
+  <body>
+    <h1>Payment proof benchmark</h1>
+    <p>Local EVM and TRON fixtures, with one warmup and three measured runs per case.
+      Every proof and verification uses a fresh runtime. Verification receives masked private inputs.</p>
+    <p class="muted">Preparation includes runtime and program loading, template validation, and public table preparation.
+      Main measures the proof backend call. End-to-end includes worker startup, preparation, main, and result delivery.
+      Template generation is done before deployment and is never run here.</p>
+    <div id="controls"></div>
+    <p id="status" role="status">Loading benchmark configuration…</p>
+    <progress id="progress" value="0" max="16"></progress>
+    <h2>Medians of measured runs</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Version</th><th>Payment</th><th>Runs</th><th>Proof preparation</th><th>Proof main</th><th>Proof end-to-end</th><th>Verify preparation</th><th>Verify main</th><th>Verify end-to-end</th></tr>
+        </thead>
+        <tbody id="medians"></tbody>
+      </table>
+    </div>
+    <p id="save-location" class="muted"></p>
+    <details>
+      <summary>Individual runs, including warmups</summary>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Version</th><th>Payment</th><th>Run</th><th>Proof main</th><th>Proof end-to-end</th><th>Verify main</th><th>Verify end-to-end</th><th>Proof bytes</th></tr></thead>
+          <tbody id="runs"></tbody>
+        </table>
+      </div>
+    </details>
+    <details>
+      <summary>Recent backend output (input arguments omitted)</summary>
+      <pre id="logs"></pre>
+    </details>
+    <script type="module" src="/benchmark.mjs"></script>
+  </body>
+</html>
