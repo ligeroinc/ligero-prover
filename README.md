@@ -338,3 +338,9 @@ google-chrome --enable-unsafe-webgpu --enable-features=Vulkan
 ------
 
 Copyright (C) 2023-2026 Ligero, Inc
+
+## Optimized prehashed ECDSA
+
+An opt-in secp256k1 host verifies low-S signatures with a pinned 596,424-row
+standard R1CS circuit. It supports public template precomputation and parallel
+browser witness generation. See [the API, build, and integration guide](docs/ecdsa-r1cs.md).
