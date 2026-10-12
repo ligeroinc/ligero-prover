@@ -23,6 +23,7 @@
 #include <host_modules/wasi_preview1.hpp>
 #include <host_modules/uint256.hpp>
 #include <host_modules/ecc.hpp>
+#include <host_modules/ecdsa_r1cs.hpp>
 #include <util/timer.hpp>
 #include <interpreter.hpp>
 
@@ -52,6 +53,7 @@ void invoke(module_instance& module,
     ctx.template add_host_module<vbn254fr_module<Context>>(&ctx);
     ctx.template add_host_module<uint256_module<Context>>(&ctx);
     ctx.template add_host_module<ecc_module<Context>>(&ctx);
+    ctx.template add_host_module<ecdsa_r1cs_module<Context>>(&ctx);
     // ctx.template add_host_module<zkp::rescue_prime_module<Context>>(&ctx);
 
     // if constexpr (requires { Context::support_RAM; }) {

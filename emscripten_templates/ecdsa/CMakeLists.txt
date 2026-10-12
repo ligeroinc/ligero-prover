@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.24)
+project(LigeroEcdsaWitness LANGUAGES CXX)
+
+if(NOT EMSCRIPTEN)
+  message(FATAL_ERROR "Configure with emcmake; this target is a browser CPU worker")
+endif()
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+get_filename_component(LIGERO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+add_library(ecdsa_r1cs_dependencies INTERFACE)
+target_include_directories(ecdsa_r1cs_dependencies SYSTEM INTERFACE
+  "${CMAKE_PREFIX_PATH}/include")
+foreach(library gmpxx gmp crypto)
+  set(archive "${CMAKE_PREFIX_PATH}/lib/lib${library}.a")
+  if(NOT EXISTS "${archive}")
+    message(FATAL_ERROR "Missing WebAssembly dependency: ${archive}")
+  endif()
+  target_link_libraries(ecdsa_r1cs_dependencies INTERFACE "${archive}")
+endforeach()
+add_subdirectory("${LIGERO_ROOT}/lib/ecdsa_r1cs" ecdsa-core)
+target_compile_options(ecdsa_r1cs_core PRIVATE -O3)
+add_executable(ecdsa_witness "${LIGERO_ROOT}/lib/ecdsa_r1cs/witness_worker.cpp")
+target_link_libraries(ecdsa_witness PRIVATE ecdsa_r1cs_core)
+target_compile_options(ecdsa_witness PRIVATE -O3)
+target_link_options(ecdsa_witness PRIVATE
+  -O3 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=2MB
+  -sENVIRONMENT=worker -sINVOKE_RUN=0
+  "-sEXPORTED_RUNTIME_METHODS=['FS','callMain']")
+set_target_properties(ecdsa_witness PROPERTIES SUFFIX ".js")
+configure_file(ecdsa_witness_worker.js ecdsa_witness_worker.js COPYONLY)
+configure_file(ecdsa_precompute.js ecdsa_precompute.js COPYONLY)

@@ -73,3 +73,7 @@ target_link_options(ecdsa_p256_verify PRIVATE "-sSTACK_SIZE=100000000")
 add_executable(ecdsa_secp256k1_verify ECDSA/secp256k1_sha256_sigver.cpp)
 target_link_libraries(ecdsa_secp256k1_verify ligetron)
 target_link_options(ecdsa_secp256k1_verify PRIVATE "-sSTACK_SIZE=100000000")
+
+# Prehashed, low-S ECDSA using the versioned native R1CS host.
+add_executable(ecdsa_secp256k1_r1cs ECDSA/secp256k1_r1cs.cpp)
+target_link_libraries(ecdsa_secp256k1_r1cs ligetron)

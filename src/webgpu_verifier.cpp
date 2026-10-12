@@ -27,8 +27,10 @@
 #include <wgpu.hpp>
 
 #include <interpreter.hpp>
+#include <ecdsa_r1cs/template.hpp>
 #include <util/portable_sample.hpp>
 #include <zkp/common.hpp>
+#include <zkp/ecdsa_r1cs_statement.hpp>
 #include <zkp/finite_field_gmp.hpp>
 #include <zkp/nonbatch_context.hpp>
 #include <zkp/proof_serializer.hpp>
@@ -214,6 +216,11 @@ int main(int argc, const char *argv[]) {
                       << std::endl;
             exit(EXIT_FAILURE);
         }
+        const auto program_hash = zkp::hash<params::hasher>(
+            zkp::byte_view{program_data.data(), program_data.size()});
+        instance_hash = zkp::bind_ecdsa_r1cs_statement<params::hasher>(
+            *wabt_module, program_hash, instance_hash,
+            ligero::ecdsa_r1cs_host::expected_shape);
     }
 
     auto [omega_k, omega_2k, omega_4k] = field_t::generate_omegas(k, n);
