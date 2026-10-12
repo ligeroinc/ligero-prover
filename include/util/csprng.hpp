@@ -22,6 +22,7 @@
 #include <gmpxx.h>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
+#include <util/mpz_bytes.hpp>
 
 namespace ligero::vm {
 
@@ -96,7 +97,7 @@ struct mpz_random_engine {
             fill_buf();
         }
 
-        mpz_import(ret.get_mpz_t(), num_u64, -1, sizeof(uint64_t), 0, 0, buffer_ + offset_);
+        mpz_import_words(ret.get_mpz_t(), num_u64, sizeof(uint64_t), 0, buffer_ + offset_);
 
         offset_ += num_u64;
     }

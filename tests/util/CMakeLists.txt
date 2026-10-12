@@ -11,10 +11,27 @@ endif()
 add_executable(test_mpz_get
   test_mpz_get.cpp
 )
+add_executable(test_bulk_bytes test_bulk_bytes.cpp)
+target_link_libraries(test_bulk_bytes PRIVATE ecdsa_r1cs_dependencies)
+target_include_directories(test_bulk_bytes PRIVATE ${PROJECT_SOURCE_DIR}/include)
+add_executable(test_bn254_mul test_bn254_mul.cpp ${PROJECT_SOURCE_DIR}/src/bn254.cpp)
+target_link_libraries(test_bn254_mul PRIVATE ecdsa_r1cs_dependencies)
+target_include_directories(test_bn254_mul PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 # When building with Emscripten, emit a .js launcher so Node can run it.
 if(EMSCRIPTEN)
   set_target_properties(test_mpz_get PROPERTIES SUFFIX ".js")
+  set_target_properties(test_bulk_bytes PROPERTIES SUFFIX ".js")
+  set_target_properties(test_bn254_mul PROPERTIES SUFFIX ".js")
+  target_link_options(test_bulk_bytes PRIVATE -sINVOKE_RUN=1 -sENVIRONMENT=node
+    -sEXIT_RUNTIME=1 -sSTACK_SIZE=1048576 -sALLOW_MEMORY_GROWTH=1)
+  add_test(NAME util.test_bulk_bytes COMMAND node $<TARGET_FILE:test_bulk_bytes>)
+  target_link_options(test_bn254_mul PRIVATE -sINVOKE_RUN=1 -sENVIRONMENT=node
+    -sEXIT_RUNTIME=1 -sSTACK_SIZE=1048576 -sALLOW_MEMORY_GROWTH=1)
+  add_test(NAME util.test_bn254_mul COMMAND node $<TARGET_FILE:test_bn254_mul>)
+else()
+  add_test(NAME util.test_bulk_bytes COMMAND test_bulk_bytes)
+  add_test(NAME util.test_bn254_mul COMMAND test_bn254_mul)
 endif()
 
 # -----------------------------------------------------------------------------

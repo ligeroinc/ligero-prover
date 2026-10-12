@@ -198,13 +198,15 @@ struct nonbatch_context_base {
         host_module_.push_back(std::move(ptr));
     }
 
-    exec_result call_host(address_t addr, std::string module_name, std::string func) {
+    exec_result call_host(address_t addr, const std::string& module_name,
+                          const std::string& func) {
         // std::cout << "call: " << addr << std::endl;
-        if (!module_map_.contains(module_name)) {
+        const auto module = module_map_.find(module_name);
+        if (module == module_map_.end()) {
             std::cerr << std::format("ERROR: Could not load module {}, aborting!", module_name) << std::endl;
             return exec_exit{ .exit_code = -1 };
         }
-        return module_map_[module_name]->call_host(addr, func);
+        return module->second->call_host(addr, func);
     }
 
     auto stack_bottom() { return stack_.rend(); }

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -329,6 +330,8 @@ device_context::~device_context() {
 }
 
 void device_context::device_init() {
+    const char* profile = std::getenv("LIGERO_GPU_PROFILE");
+    profile_enabled_ = profile && profile[0] && std::string_view(profile) != "0";
     WGPUInstanceFeatureName features[] = {
         WGPUInstanceFeatureName_TimedWaitAny
     };
@@ -399,8 +402,30 @@ void device_context::device_shutdown() {
 }
 
 void device_context::device_synchronize() {
-    if (instance_ && queue_)
+    if (instance_ && queue_) {
+        const auto start = profile_enabled_ ? std::chrono::steady_clock::now()
+                                           : std::chrono::steady_clock::time_point{};
         wgpuDeviceSynchronize(instance_, queue_);
+        if (profile_enabled_) {
+            ++profile_.syncs;
+            profile_.sync_ms += std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - start).count();
+        }
+    }
+}
+
+void device_context::report_io_profile(std::string_view phase) {
+    if (!profile_enabled_) return;
+    std::cout << "[GPU IO] phase=" << phase
+              << " submits=" << profile_.submits << " submit_ms=" << profile_.submit_ms
+              << " syncs=" << profile_.syncs << " sync_ms=" << profile_.sync_ms
+              << " maps=" << profile_.maps << " map_ms=" << profile_.map_ms
+              << " map_bytes=" << profile_.map_bytes
+              << " writes=" << profile_.writes << " write_ms=" << profile_.write_ms
+              << " write_bytes=" << profile_.write_bytes
+              << " clear_bytes=" << profile_.clear_bytes
+              << " copy_bytes=" << profile_.copy_bytes << '\n';
+    profile_ = {};
 }
 
 WGPUInstance device_context::instance() const { return instance_; }
@@ -416,7 +441,14 @@ void device_context::submit(WGPUCommandBuffer command) {
         num_submitted_tasks_ = 0;
     }
 #endif
+    const auto start = profile_enabled_ ? std::chrono::steady_clock::now()
+                                       : std::chrono::steady_clock::time_point{};
     wgpuQueueSubmit(queue_, 1, &command);
+    if (profile_enabled_) {
+        ++profile_.submits;
+        profile_.submit_ms += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+    }
     wgpuCommandBufferRelease(command);
 }
 
@@ -459,10 +491,20 @@ buffer_view device_context::make_map_buffer(size_t num_bytes) {
 
 void device_context::write_buffer_raw(buffer_view buf, const void *data, size_t num_bytes) {
     assert(buf.size() >= num_bytes);
+    const auto start = profile_enabled_ ? std::chrono::steady_clock::now()
+                                       : std::chrono::steady_clock::time_point{};
     wgpuQueueWriteBuffer(queue_, buf.get(), buf.offset(), data, num_bytes);
+    if (profile_enabled_) {
+        ++profile_.writes;
+        profile_.write_bytes += num_bytes;
+        profile_.write_ms += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+    }
 }
 
 void device_context::clear_buffer(buffer_view buf) {
+    if (!buf.size()) return;
+    if (profile_enabled_) profile_.clear_bytes += buf.size();
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
     wgpuCommandEncoderClearBuffer(encoder, buf.get(), buf.offset(), buf.size());
     WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, nullptr);
@@ -476,6 +518,7 @@ void device_context::copy_buffer_to_buffer(buffer_view from, buffer_view to) {
 }
 
 void device_context::copy_buffer_to_buffer(buffer_view from, buffer_view to, size_t bytes) {
+    if (profile_enabled_) profile_.copy_bytes += bytes;
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
     wgpuCommandEncoderCopyBufferToBuffer(encoder,
                                          from.get(), from.offset(),
@@ -487,8 +530,18 @@ void device_context::copy_buffer_to_buffer(buffer_view from, buffer_view to, siz
 }
 
 void device_context::copy_buffer_clear(buffer_view from, buffer_view to) {
+    assert(from.size() <= to.size());
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
-    wgpuCommandEncoderClearBuffer(encoder, to.get(), to.offset(), to.size());
+    // The copy overwrites the prefix. Only the remaining tail needs clearing.
+    const size_t tail_bytes = to.size() - from.size();
+    if (tail_bytes) {
+        wgpuCommandEncoderClearBuffer(encoder, to.get(),
+                                      to.offset() + from.size(), tail_bytes);
+    }
+    if (profile_enabled_) {
+        profile_.clear_bytes += tail_bytes;
+        profile_.copy_bytes += from.size();
+    }
     wgpuCommandEncoderCopyBufferToBuffer(encoder,
                                          from.get(), from.offset(),
                                          to.get(), to.offset(),
@@ -500,7 +553,15 @@ void device_context::copy_buffer_clear(buffer_view from, buffer_view to) {
 
 std::span<const std::byte>
 device_context::map_buffer_raw(buffer_view map_buf) {
+    const auto start = profile_enabled_ ? std::chrono::steady_clock::now()
+                                       : std::chrono::steady_clock::time_point{};
     wgpuBufferMapSync(instance_, map_buf.get(), map_buf.offset(), map_buf.size());
+    if (profile_enabled_) {
+        ++profile_.maps;
+        profile_.map_bytes += map_buf.size();
+        profile_.map_ms += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+    }
     const void* ptr = wgpuBufferGetConstMappedRange(map_buf.get(),
                                                     map_buf.offset(),
                                                     map_buf.size());

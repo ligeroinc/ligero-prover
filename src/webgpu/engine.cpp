@@ -15,6 +15,9 @@
  */
 
 #include <wgpu.hpp>
+#include <charconv>
+#include <cstdlib>
+#include <limits>
 #include <stdexcept>
 
 namespace ligero {
@@ -1390,15 +1393,14 @@ void webgpu_context::ntt_precompute_omegas(const mpz_class& p,
     
     {
         std::vector<device_bignum_type> omegas(N/2);
+        // Consecutive powers satisfy omega[i+1] = omega[i] * root mod p.
+        // Keep the accumulator in Montgomery form to avoid an exponentiation
+        // and a conversion for every entry in the table.
+        mpz_class omega = (mpz_class(1) << device_bignum_type::num_bits) % p;
         for (size_t i = 0; i < N/2; i++) {
-            mpz_class omega;
-            mpz_powm_ui(omega.get_mpz_t(), nth_root.get_mpz_t(), i, p.get_mpz_t());
-
-            // w' = w * beta mod p
-            omega <<= device_bignum_type::num_bits;
-            mpz_mod(omega.get_mpz_t(), omega.get_mpz_t(), p.get_mpz_t());
-
             omegas[i] = omega;
+            mpz_mul(omega.get_mpz_t(), omega.get_mpz_t(), nth_root.get_mpz_t());
+            mpz_mod(omega.get_mpz_t(), omega.get_mpz_t(), p.get_mpz_t());
         }
 
         for (size_t i = 1; i <= log2N; i++) {
@@ -1434,17 +1436,12 @@ void webgpu_context::ntt_precompute_omegas(const mpz_class& p,
         mpz_class inverse_root;
         mpz_invert(inverse_root.get_mpz_t(), nth_root.get_mpz_t(), p.get_mpz_t());
 
-        // Precompute inverse omega table
+        mpz_class omega_inv = (mpz_class(1) << device_bignum_type::num_bits) % p;
+        // The inverse table uses the same recurrence with root^-1.
         for (size_t i = 0; i < N/2; i++) {
-            mpz_class omega_inv;
-            mpz_powm_ui(omega_inv.get_mpz_t(),
-                        inverse_root.get_mpz_t(), i, p.get_mpz_t());
-
-            // w' = w * J mod p
-            omega_inv <<= device_bignum_type::num_bits;
-            mpz_mod(omega_inv.get_mpz_t(), omega_inv.get_mpz_t(), p.get_mpz_t());
-
             omegas_inv[i] = omega_inv;
+            mpz_mul(omega_inv.get_mpz_t(), omega_inv.get_mpz_t(), inverse_root.get_mpz_t());
+            mpz_mod(omega_inv.get_mpz_t(), omega_inv.get_mpz_t(), p.get_mpz_t());
         }
 
         for (size_t i = 1; i <= log2N; i++) {
@@ -1652,6 +1649,11 @@ void webgpu_context::sha256_digest_init(webgpu::buffer_binding ctx) {
 void webgpu_context::sha256_digest_update(webgpu::buffer_binding ctx, webgpu::buffer_binding buf) {
     WGPUCommandEncoderDescriptor cmd { .label = {"sha256_digest_update", WGPU_STRLEN} };
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &cmd);
+    if (commitment_cache_recording_) {
+        // Copy and hash the same row in the same command buffer, before the
+        // caller can enqueue a write that reuses its scratch storage.
+        capture_commitment_row(encoder, buf.buffers().at(0));
+    }
     WGPUComputePassEncoder pass = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
 
     wgpuComputePassEncoderSetPipeline(pass, sha256_update_);
@@ -1806,6 +1808,109 @@ void webgpu_context::sample_gather(webgpu::buffer_binding bind, size_t sampling_
     WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, nullptr);
     wgpuCommandEncoderRelease(encoder);
     submit(command);
+}
+
+void webgpu_context::begin_commitment_cache() {
+    size_t max_bytes = 0;
+#if !defined(__EMSCRIPTEN__)
+    if (const char* text = std::getenv("LIGERO_CACHE_COMMITMENTS_MB"); text && *text) {
+        size_t megabytes = 0;
+        const auto end = text + std::strlen(text);
+        const auto parsed = std::from_chars(text, end, megabytes);
+        if (parsed.ec == std::errc{} && parsed.ptr == end &&
+            megabytes <= std::numeric_limits<size_t>::max() / (1024 * 1024)) {
+            max_bytes = megabytes * 1024 * 1024;
+        } else {
+            LIGERO_LOG_WARNING << "Invalid LIGERO_CACHE_COMMITMENTS_MB; using stage 3 replay";
+        }
+    }
+#endif
+    begin_commitment_cache(max_bytes);
+}
+
+void webgpu_context::begin_commitment_cache(size_t max_bytes) {
+    commitment_rows_.clear();
+    commitment_cache_bytes_ = 0;
+    commitment_cache_limit_ = max_bytes;
+    commitment_cache_ready_ = false;
+    commitment_cache_recording_ = max_bytes != 0;
+}
+
+void webgpu_context::capture_commitment_row(WGPUCommandEncoder encoder, buffer_type row) {
+    const size_t row_bytes = size_t(encoding_size()) * device_bignum_type::num_bytes;
+    if (row.size() != row_bytes || sha_instances_ != encoding_size()) {
+        throw std::logic_error("Commitment cache requires full encoded rows");
+    }
+    if (row_bytes > commitment_cache_limit_ - commitment_cache_bytes_) {
+        // A partial cache cannot replace replay. Release it immediately and
+        // leave the ordinary stage-3 path available for the complete proof.
+        commitment_cache_recording_ = false;
+        commitment_cache_ready_ = false;
+        commitment_rows_.clear();
+        commitment_cache_bytes_ = 0;
+        LIGERO_LOG_INFO << "Commitment cache budget exceeded; using stage 3 replay";
+        return;
+    }
+    // This buffer is initialized by a full-range copy in this very encoder
+    // before it is ever read. Unlike general storage buffers with partial or
+    // dynamic-offset writes, it needs no separate zero-fill submission.
+    WGPUBufferDescriptor desc {
+        .usage = WGPUBufferUsage_Storage
+                 | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc,
+        .size = row_bytes,
+    };
+    buffer_type saved(wgpuDeviceCreateBuffer(device(), &desc), 0, row_bytes);
+    wgpuCommandEncoderCopyBufferToBuffer(encoder, row.get(), row.offset(),
+                                        saved.get(), saved.offset(), row_bytes);
+    if (profile_enabled_) profile_.copy_bytes += row_bytes;
+    commitment_rows_.push_back(std::move(saved));
+    commitment_cache_bytes_ += row_bytes;
+}
+
+bool webgpu_context::finish_commitment_cache() {
+    commitment_cache_ready_ = commitment_cache_recording_ && !commitment_rows_.empty();
+    commitment_cache_recording_ = false;
+    if (commitment_cache_ready_) {
+        LIGERO_LOG_INFO << "Commitment cache: " << commitment_rows_.size()
+                       << " rows, " << commitment_cache_bytes_ << " bytes";
+    }
+    return commitment_cache_ready_;
+}
+
+std::vector<uint32_t>
+webgpu_context::sample_cached_commitments(const std::vector<size_t>& indexes) {
+    if (!commitment_cache_ready_) {
+        throw std::logic_error("No complete commitment cache is available");
+    }
+    if (indexes.size() != vm::params::sample_size ||
+        !std::is_sorted(indexes.begin(), indexes.end()) ||
+        std::adjacent_find(indexes.begin(), indexes.end()) != indexes.end() ||
+        indexes.back() >= encoding_size()) {
+        throw std::invalid_argument("Invalid commitment sampling indexes");
+    }
+    sampling_init(indexes);
+    constexpr size_t batch_rows = 256;
+    const size_t bytes_per_row = indexes.size() * device_bignum_type::num_bytes;
+    auto sampled = make_device_buffer(
+        std::min(batch_rows, commitment_rows_.size()) * bytes_per_row);
+    std::vector<uint32_t> result;
+    result.reserve(commitment_rows_.size() * bytes_per_row / sizeof(uint32_t));
+
+    for (size_t first = 0; first < commitment_rows_.size(); first += batch_rows) {
+        const size_t count = std::min(batch_rows, commitment_rows_.size() - first);
+        for (size_t row = 0; row < count; ++row) {
+            auto binding = bind_sampling(commitment_rows_[first + row], sampled);
+            sample_gather(binding, row);
+        }
+        auto used = sampled.slice_bytes(0, count * bytes_per_row);
+        auto host = copy_to_host<uint32_t>(used);
+        result.insert(result.end(), host.begin(), host.end());
+        clear_buffer(used);
+    }
+    commitment_rows_.clear();
+    commitment_cache_bytes_ = 0;
+    commitment_cache_ready_ = false;
+    return result;
 }
 
 

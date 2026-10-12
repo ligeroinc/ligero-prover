@@ -143,7 +143,10 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Web")
 
   add_compile_definitions(NDEBUG)
   add_compile_options(-O3 -mbulk-memory -sUSE_ZLIB=1 --use-port=emdawnwebgpu)
+  # Emscripten applies Binaryen/JS optimization at link time; compile-only -O3
+  # leaves the linked module (including Asyncify) at its default -O0 setting.
   add_link_options(
+    -O3
     --use-port=emdawnwebgpu
     -sUSE_ZLIB=1
     -sERROR_ON_UNDEFINED_SYMBOLS=0

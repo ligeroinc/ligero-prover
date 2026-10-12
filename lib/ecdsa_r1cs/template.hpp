@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <unordered_map>
 #include <span>
 #include <sstream>
 #include <stdexcept>
@@ -21,8 +22,21 @@
 namespace ligero::ecdsa_r1cs_host {
 
 using ecdsa_r1cs::Big;
-using ecdsa_r1cs::LC;
-using EcdsaRow = std::array<LC, 3>;
+inline constexpr std::uint32_t coefficient_one = 0;
+inline constexpr std::uint32_t coefficient_minus_one = 1;
+
+// Compact decoded public template: row spans reference one flat term array,
+// and repeated field coefficients share immutable storage. The raw R1CS file
+// is authenticated before any row is decoded into this representation.
+struct EcdsaTerm {
+    std::uint32_t wire;
+    std::uint32_t coefficient_index;
+};
+struct EcdsaExpression {
+    std::uint32_t offset;
+    std::uint32_t count;
+};
+using EcdsaRow = std::array<EcdsaExpression, 3>;
 inline constexpr std::uint64_t expected_rows = 596424;
 inline constexpr std::uint64_t expected_variables = 591290;
 inline constexpr std::string_view expected_shape =
@@ -30,6 +44,15 @@ inline constexpr std::string_view expected_shape =
 
 struct FixedCircuit {
     std::vector<EcdsaRow> rows;
+    std::vector<EcdsaTerm> term_storage;
+    // Canonical field coefficients; indexes zero and one are +1 and -1.
+    std::vector<Big> coefficients;
+    std::span<const EcdsaTerm> terms(const EcdsaExpression& expression) const {
+        return std::span<const EcdsaTerm>(term_storage).subspan(expression.offset, expression.count);
+    }
+    // Derived only from the authenticated public rows. This controls when
+    // host-owned auxiliary handles can be released, never which rows apply.
+    std::vector<std::uint32_t> last_use;
 };
 
 inline std::filesystem::path template_path() {
@@ -63,11 +86,20 @@ public:
     Big field() {
         const auto bytes = take(32);
         Big value;
-        mpz_import(value.get_mpz_t(), bytes.size(), -1, 1, 0, 0, bytes.data());
+        import_field(value, bytes);
         return value;
+    }
+    void field(Big& value) {
+        import_field(value, take(32));
     }
     bool empty() const { return bytes_.empty(); }
 private:
+    static void import_field(Big& value, std::span<const unsigned char> bytes) {
+        // The serialized field is always 32 little-endian bytes. Group them
+        // into four words so GMP can use its wide-word import path; explicit
+        // byte order preserves the same integer on every host architecture.
+        mpz_import(value.get_mpz_t(), 4, -1, 8, -1, 0, bytes.data());
+    }
     std::span<const unsigned char> bytes_;
 };
 
@@ -142,25 +174,59 @@ inline FixedCircuit load_fixed_circuit(const std::filesystem::path& path) {
     Reader rows(row_bytes);
     FixedCircuit result;
     result.rows.reserve(expected_rows);
+    constexpr std::size_t term_count = (107102844 - 12 * expected_rows) / 36;
+    result.term_storage.reserve(term_count);
+    result.last_use.resize(expected_variables, UINT32_MAX);
+    result.coefficients = {Big(1), ecdsa_r1cs::native_modulus() - 1};
+    // Intern only validated public coefficients. IDs are assigned in row
+    // order; the hash table is never iterated, so its bucket layout and GMP
+    // limb width cannot affect decoded rows or the proof allocation schedule.
+    struct CoefficientHash {
+        std::size_t operator()(const Big& value) const noexcept {
+            std::uint64_t hash = 14695981039346656037ULL;
+            const auto size = mpz_size(value.get_mpz_t());
+            for (std::size_t i = 0; i < size; ++i) {
+                hash ^= static_cast<std::uint64_t>(mpz_getlimbn(value.get_mpz_t(), i));
+                hash *= 1099511628211ULL;
+            }
+            return static_cast<std::size_t>(hash ^ (hash >> 32));
+        }
+    };
+    std::unordered_map<Big, std::uint32_t, CoefficientHash> coefficient_ids;
+    coefficient_ids.reserve(131072); // Hint for the pinned template's 114818 coefficients.
+    Big coefficient;
     for (std::uint64_t i = 0; i < expected_rows; ++i) {
         EcdsaRow row;
         for (auto& expression : row) {
             const auto count = rows.u32();
-            require(count <= expected_variables, "too many ECDSA R1CS template terms");
-            std::vector<ecdsa_r1cs::Term> terms;
-            terms.reserve(count);
+            require(count <= expected_variables && count <= term_count - result.term_storage.size(),
+                    "too many ECDSA R1CS template terms");
+            expression = {static_cast<std::uint32_t>(result.term_storage.size()), count};
+            std::uint32_t previous_wire = 0;
             for (std::uint32_t term = 0; term < count; ++term) {
                 const auto wire = rows.u32();
-                auto coefficient = rows.field();
-                require(wire < expected_variables && (term == 0 || wire > terms.back().wire) &&
+                rows.field(coefficient);
+                require(wire < expected_variables && (term == 0 || wire > previous_wire) &&
                         coefficient > 0 && coefficient < ecdsa_r1cs::native_modulus(),
                         "noncanonical ECDSA R1CS template term");
-                terms.push_back({wire, std::move(coefficient)});
+                previous_wire = wire;
+                result.last_use[wire] = static_cast<std::uint32_t>(i);
+                std::uint32_t coefficient_id;
+                if (coefficient == 1) coefficient_id = coefficient_one;
+                else if (coefficient == result.coefficients[coefficient_minus_one])
+                    coefficient_id = coefficient_minus_one;
+                else {
+                    const auto [entry, inserted] = coefficient_ids.try_emplace(coefficient,
+                        static_cast<std::uint32_t>(result.coefficients.size()));
+                    coefficient_id = entry->second;
+                    if (inserted) result.coefficients.push_back(coefficient);
+                }
+                result.term_storage.push_back({wire, coefficient_id});
             }
-            expression = LC(std::move(terms));
         }
         result.rows.push_back(std::move(row));
     }
+    require(result.term_storage.size() == term_count, "unexpected ECDSA R1CS template term count");
     require(rows.empty(), "trailing ECDSA R1CS row bytes");
     return result;
 }

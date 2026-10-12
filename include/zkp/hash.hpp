@@ -75,8 +75,19 @@ struct overload_hash {
     
     template <typename T, typename Alloc>
     overload_hash& operator<<(const std::vector<T, Alloc>& vec) {
-        for (const auto& v : vec)
-            *this << v;
+        // Integer vectors serialize as the concatenation of their native byte
+        // representations. Feed that same byte stream in one update rather than
+        // issuing one EVP call for every limb of the encoded proof polynomials.
+        // bool has packed vector storage; other types retain their serializers.
+        if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
+            if (!vec.empty()) {
+                derive_ << byte_view{reinterpret_cast<const uint8_t*>(vec.data()),
+                                    vec.size() * sizeof(T)};
+            }
+        } else {
+            for (const auto& v : vec)
+                *this << v;
+        }
         return *this;
     }
 

@@ -18,6 +18,7 @@
 
 #include <cstring>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include <webgpu/webgpu.h>
@@ -33,6 +34,9 @@ struct device_context {
     void device_init();
     void device_shutdown();
     void device_synchronize();
+    // Opt-in with LIGERO_GPU_PROFILE=1. Reports and resets CPU-side I/O
+    // counters; map/sync time includes waiting for earlier GPU work.
+    void report_io_profile(std::string_view phase);
 
     WGPUInstance instance() const;
     WGPUAdapter  adapter() const;
@@ -72,6 +76,12 @@ protected:
     WGPUDevice   device_     = nullptr;
     WGPUQueue    queue_      = nullptr;
     int num_submitted_tasks_ = 0;
+    bool profile_enabled_ = false;
+    struct io_profile {
+        size_t submits = 0, syncs = 0, maps = 0, writes = 0;
+        size_t write_bytes = 0, map_bytes = 0, clear_bytes = 0, copy_bytes = 0;
+        double submit_ms = 0, sync_ms = 0, map_ms = 0, write_ms = 0;
+    } profile_;
 };
 
 

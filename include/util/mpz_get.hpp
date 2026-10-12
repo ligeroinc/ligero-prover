@@ -24,6 +24,19 @@
 
 namespace ligero
 {
+inline uint64_t mpz_get_u64_low(mpz_srcptr val)
+{
+  // mpz_export writes every significant word and cannot truncate into a single
+  // uint64_t. Read only the limbs intersecting the low 64 bits instead. GMP's
+  // limb accessor, like mpz_export, reads the magnitude of negative values.
+  uint64_t result = static_cast<uint64_t>(mpz_getlimbn(val, 0));
+  if constexpr (GMP_NUMB_BITS < 64) {
+    for (unsigned bit = GMP_NUMB_BITS, limb = 1; bit < 64; bit += GMP_NUMB_BITS, ++limb)
+      result |= static_cast<uint64_t>(mpz_getlimbn(val, limb)) << bit;
+  }
+  return result;
+}
+
 /// Safely extract a uint64_t from an mpz_class
 ///
 /// Unlike mpz_get_ui() which returns unsigned long (platform-dependent size),
@@ -33,10 +46,7 @@ namespace ligero
 /// @return uint64_t The value as a 64-bit unsigned integer (lower 64 bits if larger)
 inline uint64_t mpz_get_u64(const mpz_class& val)
 {
-  uint64_t result = 0;
-  size_t count;
-  mpz_export(&result, &count, -1, sizeof(uint64_t), 0, 0, val.get_mpz_t());
-  return result;
+  return mpz_get_u64_low(val.get_mpz_t());
 }
 
 /// Safely extract a uint64_t from an mpz_t
@@ -47,10 +57,7 @@ inline uint64_t mpz_get_u64(const mpz_class& val)
 /// @return uint64_t The value as a 64-bit unsigned integer (lower 64 bits if larger)
 inline uint64_t mpz_get_u64(const mpz_t val)
 {
-  uint64_t result = 0;
-  size_t count;
-  mpz_export(&result, &count, -1, sizeof(uint64_t), 0, 0, val);
-  return result;
+  return mpz_get_u64_low(val);
 }
 
 /// Extract a uint32_t from an mpz_class

@@ -148,6 +148,14 @@ struct webgpu_context : public webgpu::device_context {
     void sampling_init(const std::vector<size_t>&);
     void sample_gather(webgpu::buffer_binding bind, size_t sampling_offset);
 
+    // Optional per-proof cache of the exact rows hashed during stage 1.
+    // A complete cache can supply stage 3 openings without replaying the VM.
+    // The no-argument overload reads LIGERO_CACHE_COMMITMENTS_MB (native only).
+    void begin_commitment_cache();
+    void begin_commitment_cache(size_t max_bytes);
+    bool finish_commitment_cache();
+    std::vector<uint32_t> sample_cached_commitments(const std::vector<size_t>& indexes);
+
     // --------------------------------------------------
 
     uint32_t message_size() const { return size_l_; }
@@ -202,6 +210,7 @@ private:
                                buffer_type config_buf);
 
     webgpu::powmod_context<device_bignum_type>* get_powmod_context();
+    void capture_commitment_row(WGPUCommandEncoder encoder, buffer_type row);
 
     
     fs::path shader_root_path_;
@@ -292,6 +301,12 @@ private:
     // Sampling Indexes
     size_t num_samplings_;
     buffer_type sampling_index_buf_;
+
+    bool commitment_cache_recording_ = false;
+    bool commitment_cache_ready_ = false;
+    size_t commitment_cache_limit_ = 0;
+    size_t commitment_cache_bytes_ = 0;
+    std::vector<buffer_type> commitment_rows_;
 };
 
 

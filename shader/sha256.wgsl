@@ -151,27 +151,28 @@ fn sha256_update(
 {
     for (var idx : u32 = globalIdx.x; idx < num_instances; idx += workgroups.x * thread_block_size) {
         let bignum_idx = idx * num_limbs;
+        // Each update appends one 256-bit field element, so a block is either
+        // empty or half full. Update its stored length once per element.
+        let start = ctx.datalen[idx];
 
         for (var limb : u32 = 0; limb < num_limbs; limb++) {
             let val : u32 = input[bignum_idx + limb];
+            let offset = start + 4u * limb;
+            // Preserve the existing most-significant-byte-first limb order.
+            ctx.data[offset][idx] = (val >> 24u) & 0xffu;
+            ctx.data[offset + 1u][idx] = (val >> 16u) & 0xffu;
+            ctx.data[offset + 2u][idx] = (val >> 8u) & 0xffu;
+            ctx.data[offset + 3u][idx] = val & 0xffu;
+        }
 
-            // Assume the input integer is in little-endian, where val[31] is msb
-            for (var j : u32 = 0u; j < 32u; j += 8u) {
-                let curr = ctx.datalen[idx];
-                ctx.data[curr][idx] = (val >> (24u - j)) & 0xff;
-                ctx.datalen[idx]++;
-
-                if (ctx.datalen[idx] == 64) {
-                    sha256_transform(idx);
-                    
-                    if (ctx.bitlen[0][idx] > 0xffffffff - (512)){
-                        ctx.bitlen[1][idx]++;
-                    }
-                    ctx.bitlen[0][idx] += 512u;
-
-                    ctx.datalen[idx] = 0u;
-                }
+        ctx.datalen[idx] = start + 4u * num_limbs;
+        if (ctx.datalen[idx] == 64u) {
+            sha256_transform(idx);
+            if (ctx.bitlen[0][idx] > 0xffffffffu - 512u) {
+                ctx.bitlen[1][idx]++;
             }
+            ctx.bitlen[0][idx] += 512u;
+            ctx.datalen[idx] = 0u;
         }
     }
 }

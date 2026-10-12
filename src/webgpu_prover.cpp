@@ -44,6 +44,8 @@
 #include <nlohmann/json.hpp>
 #include <wabt/error-formatter.h>
 #include <wabt/wast-parser.h>
+#include <limits>
+#include <optional>
 
 using json = nlohmann::json;
 
@@ -59,6 +61,7 @@ using buffer_t   = typename executor_t::buffer_type;
 constexpr bool enable_RAM = false;
 
 int main(int argc, const char *argv[]) {
+    auto total_timer = make_timer("prover.total");
     const std::string ligero_version_string =
         std::format("ligero-prover v{}.{}.{}+{}.{}",
                     LIGETRON_VERSION_MAJOR,
@@ -107,6 +110,18 @@ int main(int argc, const char *argv[]) {
     size_t gpu_threads = k;
     if (jconfig.contains("gpu-threads")) {
         gpu_threads = jconfig["gpu-threads"].template get<size_t>();
+    }
+
+    std::optional<size_t> commitment_cache_bytes;
+    if (jconfig.contains("commitment-cache-mb")) {
+        const auto& budget = jconfig["commitment-cache-mb"];
+        constexpr size_t mib = 1024 * 1024;
+        if (!budget.is_number_unsigned() ||
+            budget.template get<uint64_t>() > std::numeric_limits<size_t>::max() / mib) {
+            std::cerr << "Error: commitment-cache-mb must be a nonnegative integer budget" << std::endl;
+            return EXIT_FAILURE;
+        }
+        commitment_cache_bytes = budget.template get<size_t>() * mib;
     }
 
     {
@@ -228,6 +243,7 @@ int main(int argc, const char *argv[]) {
             ligero::ecdsa_r1cs_host::expected_shape);
     }
 
+    auto setup_timer = make_timer("prover.gpu_setup");
     auto [omega_k, omega_2k, omega_4k] = field_t::generate_omegas(k, n);
 
     executor_t executor;
@@ -240,6 +256,8 @@ int main(int argc, const char *argv[]) {
                       omega_k,
                       omega_2k,
                       omega_4k);
+    setup_timer.stop();
+    executor.report_io_profile("setup");
 
     std::random_device rd;
     std::mt19937 rand(rd());
@@ -257,6 +275,8 @@ int main(int argc, const char *argv[]) {
 
     std::cout << "Start Stage 1" << std::endl;
 
+    if (commitment_cache_bytes) executor.begin_commitment_cache(*commitment_cache_bytes);
+    else executor.begin_commitment_cache();
     zkp::merkle_tree<params::hasher> tree;
     auto ctx =
         std::make_unique<zkp::nonbatch_stage1_context<field_t,
@@ -268,9 +288,14 @@ int main(int argc, const char *argv[]) {
     ctx->init_encoding_random(encoding_random_seed, params::any_iv);
 
     auto t1 = make_timer("stage1");
+    auto execute1 = make_timer("stage1.execute");
     run_program(*wabt_module, *ctx, input_args, indices_set);
+    execute1.stop();
+    auto commit_timer = make_timer("stage1.commit");
 
     tree = ctx->flush_digests();
+    const bool cached_commitments = executor.finish_commitment_cache();
+    commit_timer.stop();
 
     params::hasher::digest stage1_root = tree.root();
 
@@ -282,6 +307,7 @@ int main(int argc, const char *argv[]) {
 
     executor.device_synchronize();
     ctx.reset();
+    executor.report_io_profile("stage1");
 
     auto stage1_seed =
         zkp::hash<params::hasher>("LigetronStage1", stage1_root, instance_hash);
@@ -307,37 +333,28 @@ int main(int argc, const char *argv[]) {
     ctx2->init_encoding_random(encoding_random_seed, params::any_iv);
     ctx2->init_witness_random(seed, params::any_iv);
 
+    auto execute2 = make_timer("stage2.execute");
     run_program(*wabt_module, *ctx2, input_args, indices_set);
+    execute2.stop();
+    auto finish2 = make_timer("stage2.finish");
 
     linear_sums[0] = ctx2->linear_sums();
     code_poly      = ctx2->code();
     linear_poly    = ctx2->linear();
     quad_poly      = ctx2->quadratic();
 
+    finish2.stop();
     t2.stop();
-
-    mpz_vector encoded_code, encoded_linear, encoded_quad;
+    auto readback_timer = make_timer("stage2.readback_decode");
 
     auto encoded_code_limbs =
         executor.template copy_to_host<uint32_t>(code_poly);
-    encoded_code.import_limbs(encoded_code_limbs.data(),
-                              encoded_code_limbs.size(),
-                              sizeof(uint32_t),
-                              field_t::num_u32_limbs);
 
     auto encoded_linear_limbs =
         executor.template copy_to_host<uint32_t>(linear_poly);
-    encoded_linear.import_limbs(encoded_linear_limbs.data(),
-                                encoded_linear_limbs.size(),
-                                sizeof(uint32_t),
-                                field_t::num_u32_limbs);
 
     auto encoded_quad_limbs =
         executor.template copy_to_host<uint32_t>(quad_poly);
-    encoded_quad.import_limbs(encoded_quad_limbs.data(),
-                              encoded_quad_limbs.size(),
-                              sizeof(uint32_t),
-                              field_t::num_u32_limbs);
 
     auto stage2_seed = zkp::hash<params::hasher>("LigetronStage2",
                                                  stage1_root,
@@ -365,33 +382,28 @@ int main(int argc, const char *argv[]) {
     executor.decode_ntt_device(bind_ntt_pl);
     executor.decode_ntt_device(bind_ntt_pq);
 
-    mpz_vector host_code, host_linear, host_quad;
+    mpz_vector host_linear;
 
     std::vector<uint32_t> code_limbs =
-        executor.template copy_to_host<uint32_t>(code_poly);
-    host_code.import_limbs(code_limbs.data(),
-                           code_limbs.size(),
-                           sizeof(uint32_t),
-                           field_t::num_u32_limbs);
+        executor.template copy_to_host<uint32_t>(
+            code_poly.template slice<uint32_t>(k * field_t::num_u32_limbs));
 
     std::vector<uint32_t> linear_limbs =
-        executor.template copy_to_host<uint32_t>(linear_poly);
+        executor.template copy_to_host<uint32_t>(
+            linear_poly.template slice_n<uint32_t>(0, l * field_t::num_u32_limbs));
     host_linear.import_limbs(linear_limbs.data(),
                              linear_limbs.size(),
                              sizeof(uint32_t),
                              field_t::num_u32_limbs);
-    host_linear.resize(l);
 
     std::vector<uint32_t> quad_limbs =
-        executor.template copy_to_host<uint32_t>(quad_poly);
-    host_quad.import_limbs(quad_limbs.data(),
-                           quad_limbs.size(),
-                           sizeof(uint32_t),
-                           field_t::num_u32_limbs);
-    host_quad.resize(l);
+        executor.template copy_to_host<uint32_t>(
+            quad_poly.template slice_n<uint32_t>(0, l * field_t::num_u32_limbs));
 
     executor.device_synchronize();
     ctx2.reset();
+    readback_timer.stop();
+    executor.report_io_profile("stage2");
 
     std::cout << "----------------------------------------" << std::endl;
 
@@ -403,14 +415,22 @@ int main(int argc, const char *argv[]) {
     {
         auto t3 = make_timer("stage3");
 
-        auto ctx3 = std::make_unique<
-            zkp::nonbatch_stage3_context<field_t,
-                                         executor_t,
-                                         zkp::stage3_random_policy>>(
-            executor, sample_index);
-        ctx3->init_encoding_random(encoding_random_seed, params::any_iv);
-
-        run_program(*wabt_module, *ctx3, input_args, indices_set);
+        auto execute3 = make_timer("stage3.execute");
+        std::vector<uint32_t> host_samplings;
+        if (cached_commitments) {
+            host_samplings = executor.sample_cached_commitments(sample_index);
+        } else {
+            auto ctx3 = std::make_unique<
+                zkp::nonbatch_stage3_context<field_t,
+                                             executor_t,
+                                             zkp::stage3_random_policy>>(
+                executor, sample_index);
+            ctx3->init_encoding_random(encoding_random_seed, params::any_iv);
+            run_program(*wabt_module, *ctx3, input_args, indices_set);
+            host_samplings = ctx3->host_samplings();
+        }
+        execute3.stop();
+        auto serialize_timer = make_timer("stage3.serialize");
 
         ligero::v1::ProofMetadata metadata;
         metadata.set_prover_version(std::format("{}.{}.{}",
@@ -436,9 +456,11 @@ int main(int argc, const char *argv[]) {
                                                       encoded_linear_limbs,
                                                       encoded_quad_limbs,
                                                       decommit,
-                                                      ctx3->host_samplings(),
+                                                      host_samplings,
                                                       &metadata);
 
+        serialize_timer.stop();
+        auto compress_timer = make_timer("stage3.compress_write");
         constexpr int gzip_compression_level = 6;
         std::string compressed_proof;
         {
@@ -463,15 +485,20 @@ int main(int argc, const char *argv[]) {
         proof_file.close();
     }
 
+    executor.report_io_profile("stage3");
+
     // ================================================================================
 
     std::cout << std::boolalpha;
 
-    bool valid_code   = std::all_of(host_code.begin() + k,
-                                  host_code.end(),
+    // These are the same decoded coefficients checked previously. Zero can be
+    // checked directly on their limbs without constructing temporary GMP values.
+    bool valid_code   = std::all_of(code_limbs.begin(),
+                                  code_limbs.end(),
                                   [](const auto& x) { return x == 0; });
     bool valid_linear = zkp::validate_sum<field_t>(host_linear, linear_sums[0]);
-    bool valid_quad   = zkp::validate(host_quad);
+    bool valid_quad   = std::all_of(quad_limbs.begin(), quad_limbs.end(),
+                                  [](const auto& x) { return x == 0; });
 
     bool prove_result = valid_code && valid_linear && valid_quad;
 
@@ -488,6 +515,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Final prove result:                  " << prove_result
               << std::endl;
 
+    total_timer.stop();
     show_timer();
 
 #if defined(__EMSCRIPTEN__)

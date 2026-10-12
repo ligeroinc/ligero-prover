@@ -111,13 +111,12 @@ void bn254_gmp::mulmod(typename bn254_gmp::value_type& out,
                        const typename bn254_gmp::value_type& x,
                        const typename bn254_gmp::value_type& y)
 {
-    thread_local value_type z, q;
-
-    z   = x * y;
-    q   = (z * barrett_factor) >> 508;
-    out = z - q * modulus;
-    if (out >= modulus)
-        out -= modulus;
+    // At this field size GMP's remainder is cheaper than three products for
+    // Barrett reduction, on both native 64-bit and WebAssembly 32-bit limbs.
+    // Keep the product separate so out may alias either input.
+    thread_local value_type product;
+    mpz_mul(product.get_mpz_t(), x.get_mpz_t(), y.get_mpz_t());
+    mpz_mod(out.get_mpz_t(), product.get_mpz_t(), modulus.get_mpz_t());
 }
 
 void bn254_gmp::mont_mulmod(value_type& out,
@@ -210,4 +209,3 @@ std::ostream& operator<<(std::ostream& os, const bn254_gmp& f) {
 }
 
 }  // namespace ligero::vm::zkp
-

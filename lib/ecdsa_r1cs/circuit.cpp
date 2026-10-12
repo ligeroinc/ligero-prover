@@ -2,6 +2,7 @@
 #include "circuit.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <stdexcept>
 
 namespace ecdsa_r1cs {
@@ -155,12 +156,14 @@ Number ForeignField::bounded(const Big& value, unsigned width) {
         throw std::invalid_argument("foreign witness exceeds its bit bound");
     Number n;
     n.value = value;
+    n.bits.reserve(width);
     for (unsigned i = 0; i < 4; ++i) {
         const unsigned w = width > 64 * i ? std::min(64u, width - 64 * i) : 0;
         n.limbs[i] = w ? builder.witness(limb(value, i)) : LC(0);
         if (w) {
             auto bits = builder.bits(n.limbs[i], w);
-            n.bits.insert(n.bits.end(), bits.begin(), bits.end());
+            n.bits.insert(n.bits.end(), std::make_move_iterator(bits.begin()),
+                          std::make_move_iterator(bits.end()));
         }
     }
     return n;
@@ -168,9 +171,11 @@ Number ForeignField::bounded(const Big& value, unsigned width) {
 
 Number ForeignField::from_inputs(const std::array<LC, 4>& inputs, const Big& value) {
     Number n{inputs, value, {}};
+    n.bits.reserve(256);
     for (const auto& x : inputs) {
         auto bits = builder.bits(x, 64);
-        n.bits.insert(n.bits.end(), bits.begin(), bits.end());
+        n.bits.insert(n.bits.end(), std::make_move_iterator(bits.begin()),
+                          std::make_move_iterator(bits.end()));
     }
     canonical(n, modulus);
     return n;
@@ -199,9 +204,15 @@ void ForeignField::canonical(const Number& n, const Big& upper) {
         } else {
             // A run matches the public bound iff its mismatch count is zero.
             // The sum is in [0,256], so this native-field zero test cannot wrap.
-            LC mismatches(0);
+            // Normalize the complete sum once. Repeated LC additions copy
+            // increasingly long vectors for runs of hundreds of equal bits.
+            std::vector<Term> terms;
+            terms.reserve(end - i + 1);
+            if (one) terms.push_back({0, Big(end - i)});
             for (; i < end; ++i)
-                mismatches = mismatches + (one ? LC(1) - n.bits[i] : n.bits[i]);
+                for (const auto& term : n.bits[i].terms())
+                    terms.push_back({term.wire, one ? Big(-term.coefficient) : term.coefficient});
+            const LC mismatches(std::move(terms));
             LC matches = is_zero(builder, mismatches);
             less = one ? LC(1) - builder.mul(matches, LC(1) - less)
                        : builder.mul(matches, less);

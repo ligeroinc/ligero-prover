@@ -20,6 +20,7 @@
 #include <vector>
 #include <gmp.h>
 #include <gmpxx.h>
+#include <util/mpz_bytes.hpp>
 
 namespace ligero::vm {
 
@@ -113,15 +114,9 @@ struct mpz_vector {
 
         size_t exported_words = 0;
         for (size_t i = 0; i < size(); i++) {
-            size_t count = 0;
-            mpz_export((char*)buf + i * step_bytes,
-                       &count,
-                       -1,             // Least significant first
-                       limb_size,
-                       -1,             // Little endian
-                       0,              // Skip 0
-                       storage_[i].get_mpz_t());
-            exported_words += count;
+            exported_words += mpz_export_words((char*)buf + i * step_bytes,
+                                               limb_size, limb_count,
+                                               storage_[i].get_mpz_t());
         }
         return exported_words;
     }
@@ -147,13 +142,11 @@ struct mpz_vector {
         resize(num_mpz);
 
         for (size_t i = 0; i < num_mpz; ++i) {
-            mpz_import(
+            mpz_import_words(
                 storage_[i].get_mpz_t(),  // destination mpz
                 limb_count,
-                -1,                       // least-significant-word first
                 limb_size,                // bytes per limb
                 -1,                       // little-endian within limb
-                0,                        // no “nails”
                 (char*)buf + i * step_bytes // source buffer
             );
         }

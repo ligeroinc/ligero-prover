@@ -291,6 +291,7 @@ struct wasm_interpreter : opcode_interpreter<Context> {
             /* Push arguments */
             /* -------------------------------------------------- */
             std::vector<stack_value> arguments;
+            arguments.reserve(params + pcode->locals.size());
             for (size_t i = 0; i < params; i++) {
                 arguments.emplace_back(ctx_.stack_pop());
             }

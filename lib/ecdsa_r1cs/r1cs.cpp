@@ -77,6 +77,7 @@ const Big& native_modulus() {
 }
 
 Big native_reduce(const Big& value) {
+    if (value >= 0 && value < native_modulus()) return value;
     Big result;
     mpz_mod(result.get_mpz_t(), value.get_mpz_t(), native_modulus().get_mpz_t());
     return result;
@@ -239,10 +240,19 @@ LC Builder::witness(const Big& v) {
 }
 
 Big Builder::value(const LC& expression) const {
-    Big result = 0;
-    for (const auto& term : expression.terms()) {
+    const auto& terms = expression.terms();
+    if (terms.empty()) return Big(0);
+    if (terms.size() == 1) {
+        const auto& term = terms.front();
         if (term.wire >= impl_->values.size()) throw std::runtime_error("linear combination uses unknown wire");
-        result += term.coefficient * impl_->values[term.wire];
+        if (term.wire == 0) return term.coefficient;
+        if (term.coefficient == 1) return impl_->values[term.wire];
+        return native_reduce(term.coefficient * impl_->values[term.wire]);
+    }
+    Big result = 0;
+    for (const auto& term : terms) {
+        if (term.wire >= impl_->values.size()) throw std::runtime_error("linear combination uses unknown wire");
+        mpz_addmul(result.get_mpz_t(), term.coefficient.get_mpz_t(), impl_->values[term.wire].get_mpz_t());
     }
     return native_reduce(result);
 }

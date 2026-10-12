@@ -18,6 +18,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #ifdef __EMSCRIPTEN__
@@ -117,6 +118,7 @@ void append(Context& context,
     }
     const auto& circuit = fixed_circuit();
     auto& manager = context.backend().manager();
+    using RandomPolicy = typename std::remove_reference_t<decltype(manager)>::random_policy;
 
     const std::vector<Big>* values = nullptr;
     if constexpr (Context::role == ligero::vm::zkp::context_role::prover) {
@@ -137,35 +139,83 @@ void append(Context& context,
         witness->set_witness_status(true);
         master.push_back(witness);
     }
-    for (std::size_t i = 21; i < expected_variables; ++i) {
-        master.push_back(manager.acquire_witness(values ? (*values)[i] : Big(0)));
-    }
+    // Allocate auxiliaries only on their first public-template occurrence.
+    // Together with last-use release below, this lets the manager recycle
+    // storage instead of keeping all 591290 wire handles live at once.
+    master.resize(expected_variables, nullptr);
+    auto master_for = [&](std::uint32_t wire) {
+        auto*& witness = master[wire];
+        if (!witness) witness = manager.acquire_witness(values ? (*values)[wire] : Big(0));
+        return witness;
+    };
 
+    // Difference LCs are common. These exact field identities avoid modular
+    // multiplication without changing the random-coefficient schedule.
     Big product, value, random, weighted_random;
-    auto materialize = [&](const LC& expression) {
+    struct Operand { Witness* witness; bool temporary; };
+    auto materialize = [&](const EcdsaExpression& expression) {
+        // A unit LC is already the exact constrained value. Passing its
+        // original handle avoids a redundant linear copy; the manager clones
+        // handles that already occupy another quadratic slot when necessary.
+        // This decision uses only the immutable public template.
+        const auto& terms = circuit.terms(expression);
+        if (terms.size() == 1 && terms.front().coefficient_index == coefficient_one) {
+            return Operand{master_for(terms.front().wire), false};
+        }
         value = 0;
-        for (const auto& term : expression.terms()) {
-            Field::mulmod(product, term.coefficient,
-                          *master[term.wire]->value_ptr());
-            Field::addmod(value, value, product);
+        for (const auto& term : terms) {
+            if (term.coefficient_index == coefficient_one) {
+                Field::addmod(value, value, *master_for(term.wire)->value_ptr());
+            } else if (term.coefficient_index == coefficient_minus_one) {
+                Field::submod(value, value, *master_for(term.wire)->value_ptr());
+            } else {
+                Field::mulmod(product, circuit.coefficients[term.coefficient_index],
+                              *master_for(term.wire)->value_ptr());
+                Field::addmod(value, value, product);
+            }
         }
         auto* output = manager.acquire_witness(value);
-        random = 0;
-        manager.generate_linear_random(random);
-        manager.witness_add_random(*output, random);
-        for (const auto& term : expression.terms()) {
-            Field::mulmod(weighted_random, random, term.coefficient);
-            manager.witness_sub_random(*master[term.wire], weighted_random);
+        // Commitment/replay passes need the same values and allocation order,
+        // but have no linear challenge. The value loop above has already
+        // acquired every source wire, so omitting this pass cannot change
+        // handle allocation or committed rows. Stage 2 and verification retain
+        // every challenge-weighted equation.
+        if constexpr (RandomPolicy::enable_linear_check) {
+            random = 0;
+            manager.generate_linear_random(random);
+            manager.witness_add_random(*output, random);
+            for (const auto& term : terms) {
+                if (term.coefficient_index == coefficient_one) {
+                    manager.witness_sub_random(*master_for(term.wire), random);
+                } else if (term.coefficient_index == coefficient_minus_one) {
+                    manager.witness_add_random(*master_for(term.wire), random);
+                } else {
+                    Field::mulmod(weighted_random, random, circuit.coefficients[term.coefficient_index]);
+                    manager.witness_sub_random(*master_for(term.wire), weighted_random);
+                }
+            }
         }
-        return output;
+        return Operand{output, true};
     };
-    for (const auto& row : circuit.rows) {
-        std::array<Witness*, 3> operands;
+    for (std::size_t row_index = 0; row_index < circuit.rows.size(); ++row_index) {
+        const auto& row = circuit.rows[row_index];
+        std::array<Operand, 3> operands;
         for (std::size_t side = 0; side < operands.size(); ++side) {
             operands[side] = materialize(row[side]);
         }
-        manager.constrain_quadratic(operands[2], operands[0], operands[1]);
-        for (auto* operand : operands) manager.commit_release_witness(operand);
+        manager.constrain_quadratic(operands[2].witness, operands[0].witness, operands[1].witness);
+        for (const auto& operand : operands)
+            if (operand.temporary) manager.commit_release_witness(operand.witness);
+        // Early release keeps shared quadratic slots bounded by the live
+        // circuit wires. Guest-owned inputs and wire0 remain live until below.
+        for (const auto& expression : row) {
+            for (const auto& term : circuit.terms(expression)) {
+                if (term.wire >= 21 && circuit.last_use[term.wire] == row_index && master[term.wire]) {
+                    manager.commit_release_witness(master[term.wire]);
+                    master[term.wire] = nullptr;
+                }
+            }
+        }
     }
 
     // The guest owns handles1..20 and releases them after returning. Release
@@ -173,7 +223,7 @@ void append(Context& context,
     // may be freed, overwritten, or converted to a public constant here.
     manager.commit_release_witness(master[0]);
     for (std::size_t i = 21; i < master.size(); ++i) {
-        manager.commit_release_witness(master[i]);
+        if (master[i]) manager.commit_release_witness(master[i]);
     }
     std::cout << "ECDSA R1CS rows: " << circuit.rows.size() << '\n';
     std::cout << "ECDSA bound private limbs: 20\n";

@@ -49,6 +49,8 @@ if(BUILD_TESTING)
   target_link_libraries(ecdsa_r1cs_witness_only_test PRIVATE ecdsa_r1cs_core)
   add_executable(ecdsa_r1cs_witness_parts_test test_witness_parts.cpp)
   target_link_libraries(ecdsa_r1cs_witness_parts_test PRIVATE ecdsa_r1cs_core Threads::Threads)
+  add_executable(ecdsa_r1cs_template_layout_test template_layout_test.cpp)
+  target_link_libraries(ecdsa_r1cs_template_layout_test PRIVATE ecdsa_r1cs_core)
 
   add_test(NAME native_ec COMMAND ecdsa_r1cs_test --native-only)
   add_test(NAME foreign_arithmetic COMMAND ecdsa_r1cs_arithmetic_test)
@@ -64,9 +66,32 @@ if(BUILD_TESTING)
   add_test(NAME template_generation COMMAND ecdsa_r1cs_template
            ${CMAKE_CURRENT_BINARY_DIR}/test-artifacts/ecdsa_secp256k1_v1)
   set_tests_properties(template_generation PROPERTIES FIXTURES_SETUP ecdsa_public_template)
+  add_test(NAME template_layout
+    COMMAND ecdsa_r1cs_template_layout_test
+            ${CMAKE_CURRENT_BINARY_DIR}/test-artifacts/ecdsa_secp256k1_v1.r1cs)
+  set_tests_properties(template_layout PROPERTIES FIXTURES_REQUIRED ecdsa_public_template)
   add_test(NAME template_corruption
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_template.py
             $<TARGET_FILE:ecdsa_r1cs_template>
             ${CMAKE_CURRENT_BINARY_DIR}/test-artifacts/ecdsa_secp256k1_v1.r1cs)
   set_tests_properties(template_corruption PROPERTIES FIXTURES_REQUIRED ecdsa_public_template)
+
+  # The full repository also exercises the prover's CPU arithmetic/byte helpers
+  # in this portable GCC/Clang test build, without requiring the GPU runtime.
+  # A standalone distribution containing only this library still builds as-is.
+  get_filename_component(LIGERO_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+  if(EXISTS "${LIGERO_REPO_ROOT}/tests/util/test_bulk_bytes.cpp" AND
+     EXISTS "${LIGERO_REPO_ROOT}/tests/util/test_bn254_mul.cpp" AND
+     EXISTS "${LIGERO_REPO_ROOT}/src/bn254.cpp")
+    add_executable(test_bulk_bytes "${LIGERO_REPO_ROOT}/tests/util/test_bulk_bytes.cpp")
+    add_executable(test_bn254_mul "${LIGERO_REPO_ROOT}/tests/util/test_bn254_mul.cpp"
+                                 "${LIGERO_REPO_ROOT}/src/bn254.cpp")
+    foreach(target IN ITEMS test_bulk_bytes test_bn254_mul)
+      target_compile_features(${target} PRIVATE cxx_std_20)
+      target_include_directories(${target} PRIVATE "${LIGERO_REPO_ROOT}/include")
+      target_link_libraries(${target} PRIVATE ecdsa_r1cs_dependencies)
+    endforeach()
+    add_test(NAME util.test_bulk_bytes COMMAND test_bulk_bytes)
+    add_test(NAME util.test_bn254_mul COMMAND test_bn254_mul)
+  endif()
 endif()

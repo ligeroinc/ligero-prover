@@ -28,6 +28,7 @@ namespace ligero::vm::zkp {
 
 template <typename Field, typename RandomPolicy>
 struct witness_manager {
+    using random_policy = RandomPolicy;
     using witness_row_type = std::pair<mpz_vector&, mpz_vector&>;
 
     struct mpz_recycler {
