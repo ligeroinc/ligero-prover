@@ -396,10 +396,16 @@ Point CurveCircuit::add(const Point& p, const Point& q) {
     if (auto infinity = p.infinity.constant(); infinity && *infinity == 1) return q;
     if (auto infinity = q.infinity.constant(); infinity && *infinity == 1) return p;
     LC finite = builder.mul(LC(1) - p.infinity, LC(1) - q.infinity);
-    LC same_x = field.equal(p.x, q.x), same_y = field.equal(p.y, q.y);
+    LC same_x = field.equal(p.x, q.x);
+    LC same_y = field.equal(p.y, q.y);
     LC ordinary = builder.mul(finite, LC(1) - same_x);
-    LC doubling = builder.mul(builder.mul(builder.mul(finite, same_x), same_y),
-                              LC(1) - field.equal(p.y, field.constant(0)));
+    // Constraint and wire order is part of the pinned template. Sequence
+    // emitting calls explicitly: function argument evaluation order is not
+    // specified, even when each argument is individually well defined.
+    LC finite_same_x = builder.mul(finite, same_x);
+    LC finite_same_point = builder.mul(finite_same_x, same_y);
+    LC y_zero = field.equal(p.y, field.constant(0));
+    LC doubling = builder.mul(finite_same_point, LC(1) - y_zero);
     LC active = ordinary + doubling;
     NativePoint sum = native_add(curve, p.value, q.value);
     NativePoint candidate = builder.value(active) == 1 ? sum : NativePoint{0, 0, true};
@@ -496,7 +502,14 @@ Point CurveCircuit::variable_mul(const Number& scalar, const Point& p, ForeignFi
         Point phi = negate(p);
         phi.x = field.multiply(beta, p.x);
         phi.value.x = phi.x.value;
-        return joint_mul(am, select(aneg, negate(p), p), bm, select(bneg, negate(phi), phi));
+        // Emit the first signed point before the second on every compiler.
+        // Calling both select gadgets as joint_mul arguments would leave
+        // their constraint/wire allocation order implementation dependent.
+        Point negative_p = negate(p);
+        Point signed_p = select(aneg, negative_p, p);
+        Point negative_phi = negate(phi);
+        Point signed_phi = select(bneg, negative_phi, phi);
+        return joint_mul(am, signed_p, bm, signed_phi);
     }
     auto [alpha, beta] = fake_glv_split(curve, scalar.value);
     Number am = scalars.bounded(alpha, 128), bm = scalars.bounded(abs(beta), 128);

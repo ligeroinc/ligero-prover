@@ -6,11 +6,17 @@ on:
 jobs:
   standalone:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
     steps:
       - uses: actions/checkout@v4
       - name: Install native circuit dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libssl-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libssl-dev pkg-config clang
       - name: Configure
+        env:
+          CXX: ${{ matrix.compiler }}
         run: cmake -S lib/ecdsa_r1cs -B build/ecdsa-core -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build/ecdsa-core --parallel 4

@@ -10,7 +10,7 @@ using namespace ecdsa_r1cs;
 
 namespace {
 
-void require(bool condition, const char* message) {
+void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
@@ -112,11 +112,16 @@ void check_fixture(const Curve& curve, const Big& digest, const Big& secret,
     // that fast mode preserved ALL auxiliaries, not only the visible outputs.
     require(checked.witness_values() == fast.witness_values(), "witness vector changed");
     if (curve.name == "secp256k1") {
-        require(checked.constraints() == 596424, "pinned secp256k1 row count changed");
-        require(checked.variables() == 591290, "pinned secp256k1 wire count changed");
-        require(checked.shape_hash() ==
-            "44ce2b322d8f262076e543f7ca2f515e1325ad93a2db187dae63b13c608cf38f",
-            "pinned secp256k1 shape changed");
+        constexpr auto expected_shape =
+            "44ce2b322d8f262076e543f7ca2f515e1325ad93a2db187dae63b13c608cf38f";
+        require(checked.constraints() == 596424 && checked.variables() == 591290 &&
+                checked.public_inputs() == 20 && checked.shape_hash() == expected_shape,
+            "pinned secp256k1 circuit changed for " + label + ": actual shape=" +
+            checked.shape_hash() + ", rows=" + std::to_string(checked.constraints()) +
+            ", variables=" + std::to_string(checked.variables()) +
+            ", public_inputs=" + std::to_string(checked.public_inputs()) +
+            "; expected shape=" + expected_shape +
+            ", rows=596424, variables=591290, public_inputs=20");
     }
     const double checked_seconds = std::chrono::duration<double>(checked_end - started).count();
     const double fast_seconds = std::chrono::duration<double>(fast_end - checked_end).count();

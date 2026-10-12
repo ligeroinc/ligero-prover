@@ -27,7 +27,14 @@ int main(int argc, char** argv) {
         using namespace ligero::ecdsa_r1cs_host;
         if (builder.variables() != expected_variables || builder.constraints() != expected_rows ||
             builder.public_inputs() != 20 || builder.shape_hash() != expected_shape)
-            throw std::runtime_error("generated ECDSA R1CS template differs from pinned circuit");
+            throw std::runtime_error(
+                "generated ECDSA R1CS template differs from pinned circuit: actual shape=" +
+                builder.shape_hash() + ", rows=" + std::to_string(builder.constraints()) +
+                ", variables=" + std::to_string(builder.variables()) +
+                ", public_inputs=" + std::to_string(builder.public_inputs()) +
+                "; expected shape=" + std::string(expected_shape) +
+                ", rows=" + std::to_string(expected_rows) +
+                ", variables=" + std::to_string(expected_variables) + ", public_inputs=20");
         const auto generated = std::chrono::steady_clock::now();
         const auto loaded = load_fixed_circuit(prefix.string() + ".r1cs");
         std::filesystem::remove(prefix.string() + ".wtns");

@@ -6,13 +6,14 @@
 #include <future>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 using namespace ecdsa_r1cs;
 namespace pw = ecdsa_r1cs::witness;
 using Clock = std::chrono::steady_clock;
 
 namespace {
-void require(bool condition, const char* message) {
+void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 template <typename F> void rejects(F&& action) {
@@ -39,9 +40,16 @@ void fixture(const Big& secret, const Big& nonce, const Big& digest,
     verify_ecdsa(checked, curve, digest, signature.first, signature.second, key);
     checked.finish();
     const auto checked_seconds = std::chrono::duration<double>(Clock::now() - checked_start).count();
-    require(checked.shape_hash() ==
-        "44ce2b322d8f262076e543f7ca2f515e1325ad93a2db187dae63b13c608cf38f",
-        "checked shape changed");
+    constexpr auto expected_shape =
+        "44ce2b322d8f262076e543f7ca2f515e1325ad93a2db187dae63b13c608cf38f";
+    require(checked.shape_hash() == expected_shape && checked.constraints() == 596424 &&
+            checked.variables() == 591290 && checked.public_inputs() == 20,
+        "pinned secp256k1 circuit changed for " + label + ": actual shape=" +
+        checked.shape_hash() + ", rows=" + std::to_string(checked.constraints()) +
+        ", variables=" + std::to_string(checked.variables()) +
+        ", public_inputs=" + std::to_string(checked.public_inputs()) +
+        "; expected shape=" + expected_shape +
+        ", rows=596424, variables=591290, public_inputs=20");
 
     const auto parallel_start = Clock::now();
     auto fixed_job = std::async(std::launch::async, generate, 0, std::cref(inputs));
@@ -54,8 +62,9 @@ void fixture(const Big& secret, const Big& nonce, const Big& digest,
     merged.finish();
     const auto parallel_seconds = std::chrono::duration<double>(Clock::now() - parallel_start).count();
     require(merged.witness_values() == checked.witness_values(), "parallel witness vector changed");
-    require(merged.variables() == 591290 && checked.constraints() == 596424,
-            "pinned witness or row count changed");
+    require(merged.variables() == 591290,
+            "pinned merged witness count changed: actual=" + std::to_string(merged.variables()) +
+            "; expected=591290");
 
     const auto fixed_path = artifacts / (label + "-fixed.bin");
     const auto variable_path = artifacts / (label + "-variable.bin");
