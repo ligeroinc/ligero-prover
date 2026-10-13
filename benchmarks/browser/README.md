@@ -17,6 +17,9 @@ python3 benchmarks/browser/serve.py \
 Open **http://127.0.0.1:8789/** in a browser with WebGPU enabled. Change the port with `--port`.
 Optionally add `--baseline-assets /path/to/baseline/assets` to compare an earlier backend.
 That directory must contain `webgpu_{prover,verifier}.{js,wasm,data}` and `ecdsa_witness.{js,wasm}`.
+For a baseline with commitment caching, add `--baseline-commitment-cache-mb 768`
+to compare it against the cached candidate with an identical budget. Omit that
+option for older baselines that do not support caching.
 Both versions use the selected payment program, compressed R1CS template, and repository preparation helpers.
 The candidate Web and witness directories must contain the corresponding files from their builds.
 

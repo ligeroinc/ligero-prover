@@ -41,7 +41,7 @@ def make_state(args):
     source_variants = []
     if args.baseline_assets:
         source_variants.append(("baseline", "Baseline", args.baseline_assets,
-                                args.baseline_assets, None))
+                                args.baseline_assets, args.baseline_commitment_cache_mb))
     source_variants.append(("candidate", "Optimized", args.candidate_web,
                             args.witness_build, 0))
     if args.commitment_cache_mb is not None:
@@ -197,6 +197,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-assets", type=Path,
                         help="Optional directory with baseline backend and witness assets")
+    parser.add_argument("--baseline-commitment-cache-mb", type=int,
+                        help="Explicit cache budget for a baseline that supports caching")
     parser.add_argument("--candidate-web", type=Path, required=True)
     parser.add_argument("--witness-build", type=Path, required=True)
     parser.add_argument("--program", type=Path, required=True)
@@ -212,6 +214,9 @@ def parse_args():
         parser.error("--port must be between 1 and 65535")
     if args.commitment_cache_mb is not None and args.commitment_cache_mb < 1:
         parser.error("--commitment-cache-mb must be positive when specified")
+    if args.baseline_commitment_cache_mb is not None:
+        if not args.baseline_assets or args.baseline_commitment_cache_mb < 0:
+            parser.error("--baseline-commitment-cache-mb requires baseline assets and a nonnegative budget")
     for name in ("baseline_assets", "candidate_web", "witness_build", "program",
                  "template", "fixtures", "output"):
         value = getattr(args, name)

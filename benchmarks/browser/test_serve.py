@@ -31,7 +31,8 @@ class ServerTests(unittest.TestCase):
         program.write_bytes(b"test")
         template.write_bytes(b"test")
         self.state = make_state(SimpleNamespace(
-            baseline_assets=None, candidate_web=web, witness_build=witness,
+            baseline_assets=None, baseline_commitment_cache_mb=None,
+            candidate_web=web, witness_build=witness,
             program=program, template=template, fixtures=fixtures,
             output=root / "results", commitment_cache_mb=768))
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(self.state))
