@@ -262,7 +262,7 @@ void ForeignField::relation(std::initializer_list<Product> products,
     std::array<LC, 5> q;
     for (unsigned i = 0; i < 5; ++i) {
         q[i] = builder.witness(limb(qvalue, i));
-        builder.bits(q[i], i == 4 ? 6 : 64);
+        builder.range_check(q[i], i == 4 ? 6 : 64);
     }
     std::array<LC, 8> coefficients{};
     for (const auto& t : products)
@@ -299,7 +299,7 @@ void ForeignField::relation(std::initializer_list<Product> products,
         LC next(C);
         if (i + 2 != coefficients.size()) {
             next = builder.witness(next_carry + C);
-            builder.bits(next, 72);
+            builder.range_check(next, 72);
         } else {
             next_carry = 0;
         }
@@ -352,7 +352,7 @@ Point CurveCircuit::constant(const NativePoint& point) {
 Point CurveCircuit::point_witness(const NativePoint& point) {
     const NativePoint p = point.infinity ? NativePoint{0, 0, true} : point;
     LC inf = builder.witness(p.infinity ? Big(1) : Big(0));
-    builder.bits(inf, 1);
+    builder.range_check(inf, 1);
     Point out{field.witness(p.x), field.witness(p.y), inf, p};
     zero_when(builder, inf, out.x);
     zero_when(builder, inf, out.y);
@@ -505,7 +505,7 @@ Point CurveCircuit::variable_mul(const Number& scalar, const Point& p, ForeignFi
         Number am = scalars.bounded(abs(a), 128), bm = scalars.bounded(abs(b), 128);
         LC aneg = builder.witness(a < 0 ? Big(1) : Big(0));
         LC bneg = builder.witness(b < 0 ? Big(1) : Big(0));
-        builder.bits(aneg, 1); builder.bits(bneg, 1);
+        builder.range_check(aneg, 1); builder.range_check(bneg, 1);
         Number sa = scalars.signed_number(am, aneg), sb = scalars.signed_number(bm, bneg);
         Number lambda = scalars.constant(Big("5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72", 16));
         scalars.relation({{-1, &lambda, &sb}}, {{1, &sa}, {-1, &scalar}});
@@ -526,7 +526,7 @@ Point CurveCircuit::variable_mul(const Number& scalar, const Point& p, ForeignFi
     Number am = scalars.bounded(alpha, 128), bm = scalars.bounded(abs(beta), 128);
     scalars.nonzero(bm);
     LC negative = builder.witness(beta < 0 ? Big(1) : Big(0));
-    builder.bits(negative, 1);
+    builder.range_check(negative, 1);
     Number signed_beta = scalars.signed_number(bm, negative);
     scalars.relation({{1, &signed_beta, &scalar}}, {{-1, &am}});
     Point t = point_witness(native_mul(curve, scalar.value, p.value));
@@ -559,7 +559,7 @@ PreparedEcdsa prepare_ecdsa(Builder& builder, const Curve& curve, const Big& dig
     scalars.canonical(s, Big(curve.n / 2) + 1);
     // Digest may be any 256-bit value, including values >= the curve order.
     Number z{inputs[4], digest, {}};
-    for (auto& x : z.limbs) builder.bits(x, 64);
+    for (auto& x : z.limbs) builder.range_check(x, 64);
     builder.set_stage("scalar_divisions");
     Number u1 = scalars.divide(z, s), u2 = scalars.divide(r, s);
     return {q, r, u1, u2};

@@ -8,7 +8,9 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <gmpxx.h>
@@ -33,15 +35,25 @@ public:
     LC(long value);
     LC(const Big& value);
     explicit LC(std::vector<Term> terms);
+    LC(const LC&) = default;
+    LC& operator=(const LC&) = default;
+    LC(LC&& other) noexcept;
+    LC& operator=(LC&& other) noexcept;
 
     static LC wire(uint32_t index);
     std::optional<Big> constant() const;
-    const std::vector<Term>& terms() const { return terms_; }
+    // Borrowed immutable view, invalidated by mutation or destruction of this
+    // LC. A moved-from LC is the canonical empty combination.
+    std::span<const Term> terms() const;
 
 private:
     friend LC operator+(const LC& a, const LC& b);
     friend LC operator*(const LC& a, const Big& scalar);
-    std::vector<Term> terms_;
+    static LC canonical(std::vector<Term> terms);
+    static LC single(Term term);
+    // Most expressions are a single wire or constant. Inline that one Term
+    // instead of allocating a vector; larger expressions retain vector storage.
+    std::variant<std::vector<Term>, Term> terms_;
 };
 
 LC operator+(const LC& a, const LC& b);
@@ -73,6 +85,10 @@ public:
     void equal(const LC& a, const LC& b);
     void constrain(const LC& a, const LC& b, const LC& c);
     std::vector<LC> bits(const LC& expression, unsigned width);
+    // Identical range constraint and auxiliary wire order to bits(), without
+    // retaining its bit expressions. Witness-only mode can omit construction
+    // of those unused expressions; checked mode still emits every original row.
+    void range_check(const LC& expression, unsigned width);
 
     // Capture immutable circuit rows for embedding in another proof frontend.
     // Install before the first constraint. Observing does not alter the rows,

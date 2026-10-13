@@ -86,31 +86,68 @@ Big native_reduce(const Big& value) {
 LC::LC(long value) : LC(Big(value)) {}
 LC::LC(const Big& value) {
     Big reduced = native_reduce(value);
-    if (reduced != 0) terms_.push_back({0, std::move(reduced)});
+    if (reduced != 0) terms_.emplace<Term>(Term{0, std::move(reduced)});
 }
 
 LC::LC(std::vector<Term> terms) {
     std::sort(terms.begin(), terms.end(), [](const Term& a, const Term& b) { return a.wire < b.wire; });
-    for (auto& term : terms) {
-        if (!terms_.empty() && terms_.back().wire == term.wire) {
-            terms_.back().coefficient += term.coefficient;
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < terms.size(); ++i) {
+        if (count && terms[count - 1].wire == terms[i].wire) {
+            terms[count - 1].coefficient += terms[i].coefficient;
         } else {
-            terms_.push_back(std::move(term));
+            if (count != i) terms[count] = std::move(terms[i]);
+            ++count;
         }
     }
-    for (auto& term : terms_) term.coefficient = native_reduce(term.coefficient);
-    std::erase_if(terms_, [](const Term& term) { return term.coefficient == 0; });
+    terms.resize(count);
+    for (auto& term : terms) {
+        if (term.coefficient < 0 || term.coefficient >= native_modulus())
+            mpz_mod(term.coefficient.get_mpz_t(), term.coefficient.get_mpz_t(),
+                    native_modulus().get_mpz_t());
+    }
+    std::erase_if(terms, [](const Term& term) { return term.coefficient == 0; });
+    *this = canonical(std::move(terms));
 }
 
-LC LC::wire(uint32_t index) {
+LC::LC(LC&& other) noexcept : terms_(std::move(other.terms_)) {
+    other.terms_.emplace<std::vector<Term>>();
+}
+
+LC& LC::operator=(LC&& other) noexcept {
+    if (this != &other) {
+        terms_ = std::move(other.terms_);
+        other.terms_.emplace<std::vector<Term>>();
+    }
+    return *this;
+}
+
+std::span<const Term> LC::terms() const {
+    if (const auto* term = std::get_if<Term>(&terms_)) return {term, 1};
+    return std::get<std::vector<Term>>(terms_);
+}
+
+LC LC::single(Term term) {
     LC result;
-    result.terms_.push_back({index, Big(1)});
+    result.terms_.emplace<Term>(std::move(term));
     return result;
 }
 
+LC LC::canonical(std::vector<Term> terms) {
+    if (terms.size() == 1) return single(std::move(terms.front()));
+    LC result;
+    result.terms_.emplace<std::vector<Term>>(std::move(terms));
+    return result;
+}
+
+LC LC::wire(uint32_t index) {
+    return single({index, Big(1)});
+}
+
 std::optional<Big> LC::constant() const {
-    if (terms_.empty()) return Big(0);
-    if (terms_.size() == 1 && terms_[0].wire == 0) return terms_[0].coefficient;
+    const auto view = terms();
+    if (view.empty()) return Big(0);
+    if (view.size() == 1 && view[0].wire == 0) return view[0].coefficient;
     return {};
 }
 
@@ -118,24 +155,27 @@ LC operator+(const LC& a, const LC& b) {
     // Both operands already satisfy LC's canonical invariant. Merging keeps
     // that invariant without sorting and reducing every existing coefficient
     // again (especially expensive for incrementally built lookup tables).
-    LC result;
-    result.terms_.reserve(a.terms_.size() + b.terms_.size());
-    auto left = a.terms_.begin(), right = b.terms_.begin();
-    while (left != a.terms_.end() && right != b.terms_.end()) {
-        if (left->wire < right->wire) result.terms_.push_back(*left++);
-        else if (right->wire < left->wire) result.terms_.push_back(*right++);
+    const auto aa = a.terms(), bb = b.terms();
+    if (aa.empty()) return b;
+    if (bb.empty()) return a;
+    std::vector<Term> result;
+    result.reserve(aa.size() + bb.size());
+    auto left = aa.begin(), right = bb.begin();
+    while (left != aa.end() && right != bb.end()) {
+        if (left->wire < right->wire) result.push_back(*left++);
+        else if (right->wire < left->wire) result.push_back(*right++);
         else {
             Big coefficient = left->coefficient + right->coefficient;
             if (coefficient >= native_modulus()) coefficient -= native_modulus();
             if (coefficient != 0)
-                result.terms_.push_back({left->wire, std::move(coefficient)});
+                result.push_back({left->wire, std::move(coefficient)});
             ++left;
             ++right;
         }
     }
-    result.terms_.insert(result.terms_.end(), left, a.terms_.end());
-    result.terms_.insert(result.terms_.end(), right, b.terms_.end());
-    return result;
+    result.insert(result.end(), left, aa.end());
+    result.insert(result.end(), right, bb.end());
+    return LC::canonical(std::move(result));
 }
 
 LC operator-(const LC& a, const LC& b) { return a + (-b); }
@@ -144,17 +184,21 @@ LC operator*(const LC& a, const Big& scalar) {
     const Big reduced = native_reduce(scalar);
     if (reduced == 0) return LC();
     if (reduced == 1) return a;
-    LC result;
-    result.terms_.reserve(a.terms_.size());
+    const auto terms = a.terms();
+    if (terms.empty()) return LC();
     const bool negate = reduced == native_modulus() - 1;
-    for (const auto& term : a.terms_) {
+    const auto scale = [&](const Term& term) {
         // A nonzero coefficient times a nonzero scalar remains nonzero in
         // this field, so scaling preserves sorted, distinct wire indices.
         Big coefficient = negate ? Big(native_modulus() - term.coefficient)
                                  : native_reduce(term.coefficient * reduced);
-        result.terms_.push_back({term.wire, std::move(coefficient)});
-    }
-    return result;
+        return Term{term.wire, std::move(coefficient)};
+    };
+    if (terms.size() == 1) return LC::single(scale(terms.front()));
+    std::vector<Term> result;
+    result.reserve(terms.size());
+    for (const auto& term : terms) result.push_back(scale(term));
+    return LC::canonical(std::move(result));
 }
 LC operator*(const Big& scalar, const LC& a) { return a * scalar; }
 LC operator*(const LC& a, long scalar) { return a * Big(scalar); }
@@ -219,6 +263,18 @@ struct Builder::Impl {
         uint32_t index = static_cast<uint32_t>(values.size());
         values.push_back(native_reduce(v));
         return LC::wire(index);
+    }
+
+    uint32_t allocate_bit(bool value) {
+        require_open();
+        if (values.size() >= UINT32_MAX) throw std::runtime_error("R1CS wire limit exceeded");
+        const auto index = static_cast<uint32_t>(values.size());
+        // A Boolean value is already canonical. Construct its final GMP value
+        // directly, avoiding the temporary Big and native_reduce copy.
+        if (value) values.emplace_back(1ul);
+        else values.emplace_back(); // GMP's default zero needs no limb allocation.
+        auxiliary_started = true;
+        return index;
     }
 };
 
@@ -344,8 +400,9 @@ std::vector<LC> Builder::bits(const LC& expression, unsigned width) {
         // Boolean rows and reconstruction sum belong to the checked template,
         // so constructing their otherwise unused expressions is unnecessary.
         for (unsigned i = 0; i < width; ++i) {
-            const Big bit = mpz_tstbit(v.get_mpz_t(), i) ? 1 : 0;
-            result.push_back(is_constant ? LC(bit) : witness(bit));
+            const bool bit = mpz_tstbit(v.get_mpz_t(), i);
+            result.push_back(is_constant ? LC(static_cast<long>(bit))
+                                         : LC::wire(impl_->allocate_bit(bit)));
         }
         return result;
     }
@@ -361,6 +418,23 @@ std::vector<LC> Builder::bits(const LC& expression, unsigned width) {
     }
     equal(expression, sum);
     return result;
+}
+
+void Builder::range_check(const LC& expression, unsigned width) {
+    if (!witness_only()) {
+        (void)bits(expression, width);
+        return;
+    }
+    impl_->require_open();
+    if (width > 200) throw std::runtime_error("bit decomposition width must be at most 200");
+    const Big value = this->value(expression);
+    if (value >= (Big(1) << width)) throw std::runtime_error("value does not fit requested bit width");
+    if (expression.constant()) return;
+    // These wire values are enforced by the independently checked template.
+    // No later computation consumes their LC handles, but their allocation
+    // positions must remain identical to the ordinary bits() expansion.
+    for (unsigned i = 0; i < width; ++i)
+        impl_->allocate_bit(mpz_tstbit(value.get_mpz_t(), i));
 }
 
 void Builder::set_stage(std::string stage) { impl_->require_open(); impl_->stage = std::move(stage); }

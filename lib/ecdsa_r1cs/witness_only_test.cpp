@@ -68,6 +68,55 @@ void check_api() {
     rejects([&] { continuation.pad_witness_values(8); });
 }
 
+void check_range_only() {
+    for (unsigned width = 0; width <= 200; ++width) {
+        const Big limit = Big(1) << width;
+        for (const Big& value : std::array<Big, 2>{Big(0), Big(limit - 1)}) {
+            for (const bool constant : {false, true}) {
+                Builder retained(Builder::Mode::WitnessOnly);
+                Builder discarded(Builder::Mode::WitnessOnly);
+                const LC a = constant ? LC(value) : retained.input(value);
+                const LC b = constant ? LC(value) : discarded.input(value);
+                const auto bits = retained.bits(a, width);
+                discarded.range_check(b, width);
+                require(retained.witness_values() == discarded.witness_values(),
+                        "range-only expansion changed a bit value or wire position");
+                for (unsigned i = 0; i < width; ++i)
+                    require(retained.value(bits[i]) == (mpz_tstbit(value.get_mpz_t(), i) ? 1 : 0),
+                            "retained bit expression changed");
+                if (constant || width == 0) discarded.input(1);
+                else rejects([&] { discarded.input(1); });
+            }
+        }
+    }
+    for (const unsigned width : {0u, 1u, 6u, 63u, 64u, 65u, 72u, 127u, 128u, 199u, 200u}) {
+        for (const bool constant : {false, true}) {
+            const Big value = (Big(1) << width) - 1;
+            Builder retained, discarded;
+            const LC a = constant ? LC(value) : retained.input(value);
+            const LC b = constant ? LC(value) : discarded.input(value);
+            retained.bits(a, width);
+            discarded.range_check(b, width);
+            require(retained.shape_hash() == discarded.shape_hash() &&
+                    retained.witness_values() == discarded.witness_values(),
+                    "range-only checked rows differ from ordinary bit decomposition");
+        }
+    }
+    for (const auto mode : {Builder::Mode::Checked, Builder::Mode::WitnessOnly}) {
+        Builder b(mode);
+        b.range_check(LC(native_modulus()), 0);
+        b.range_check(LC(native_modulus() + 1), 1);
+        require(b.variables() == 1, "constant range check allocated bit witnesses");
+        const LC input = b.input(1);
+        rejects([&] { b.range_check(input, 0); });
+        rejects([&] { b.range_check(input, 201); });
+        rejects([&] { b.range_check(LC::wire(99), 1); });
+        require(b.variables() == 2, "rejected range check modified witness values");
+        b.finish();
+        rejects([&] { b.range_check(input, 1); });
+    }
+}
+
 void check_public_table_cache() {
     const auto curve = curve_by_name("secp256k1");
     Builder checked;
@@ -138,6 +187,7 @@ void check_fixture(const Curve& curve, const Big& digest, const Big& secret,
 int main() {
     try {
         check_api();
+        check_range_only();
         const auto k1 = curve_by_name("secp256k1");
         const Big digest("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 16);
         check_fixture(k1, digest, Big(7), Big(11), "public-template");

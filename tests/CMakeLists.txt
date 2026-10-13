@@ -8,6 +8,7 @@ enable_testing()
 
 add_subdirectory(webgpu)
 add_subdirectory(util)
+add_subdirectory(vm)
 
 file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/tests/*.wat")
 

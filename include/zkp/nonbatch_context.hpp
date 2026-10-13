@@ -115,6 +115,14 @@ struct nonbatch_context_base {
         stack_.push_back(std::move(val));
     }
 
+    // Ordinary Wasm numbers need no owning variant temporary. Keep the general
+    // overload for witnesses/bits so their copy and destruction order is intact.
+    template <typename T>
+        requires (std::is_arithmetic_v<T> || std::is_same_v<T, native_numeric>)
+    void stack_push(T val) {
+        stack_.emplace_back(val);
+    }
+
     stack_value_type stack_pop() {
         assert(!stack_.empty());
         stack_value_type top = std::move(stack_.back());
@@ -155,7 +163,10 @@ struct nonbatch_context_base {
     }
 
     store_t* store() { return store_; }
-    void store(store_t *s) { store_ = s; }
+    void store(store_t *s) {
+        store_ = s;
+        host_call_cache_.clear();
+    }
 
     module_instance* module() { return module_; }
     void module(module_instance *mod) { module_ = mod; }
@@ -196,6 +207,27 @@ struct nonbatch_context_base {
         ptr->initialize();
         module_map_[Module::module_name] = ptr.get();
         host_module_.push_back(std::move(ptr));
+        host_call_cache_.clear();
+    }
+
+    exec_result call_host(address_t addr, const function_instance::host_code& code) {
+        // A store can be replayed in several proving/verifying contexts. Cache
+        // the resolved module here, never in its shared function_instance.
+        if (addr >= host_call_cache_.size() && store_) {
+            host_call_cache_.resize(store_->functions.size());
+        }
+        if (addr >= host_call_cache_.size()) {
+            return call_host(addr, code.module, code.name);
+        }
+        auto& cached = host_call_cache_[addr];
+        if (!cached.module || cached.module_name != code.module) {
+            const auto module = module_map_.find(code.module);
+            if (module == module_map_.end()) {
+                return call_host(addr, code.module, code.name);
+            }
+            cached = {code.module, module->second};
+        }
+        return cached.module->call_host(addr, code.name);
     }
 
     exec_result call_host(address_t addr, const std::string& module_name,
@@ -382,6 +414,11 @@ protected:
 
     std::unordered_map<std::string, host_module*> module_map_;
     std::vector<std::unique_ptr<host_module>> host_module_;
+    struct host_call_entry {
+        std::string module_name;
+        host_module* module = nullptr;
+    };
+    std::vector<host_call_entry> host_call_cache_;
 
     // Zero-knowledge related
 protected:

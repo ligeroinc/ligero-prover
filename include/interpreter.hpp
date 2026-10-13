@@ -362,7 +362,7 @@ struct wasm_interpreter : opcode_interpreter<Context> {
         else {
             const auto& hostc = std::get<function_instance::host_code>(func.code);
             // std::cout << "calling " << hostc.module << ", " << hostc.name << std::endl;
-            return ctx_.call_host(addr, hostc.module, hostc.name);
+            return ctx_.call_host(addr, hostc);
         }
 
 

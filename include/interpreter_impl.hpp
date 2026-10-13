@@ -1858,6 +1858,11 @@ struct opcode_interpreter {
 
         auto& local = cf->locals[x];
 
+        if (const auto* numeric = local.get_if_numeric()) {
+            ctx_.stack_push(*numeric);
+            return exec_ok();
+        }
+
         ctx_.stack_push(std::visit(
             prelude::overloaded{
                 [](std::unique_ptr<wasm_frame>& v) -> stack_value {
@@ -1886,6 +1891,10 @@ struct opcode_interpreter {
         auto *cf = ctx_.current_frame();
 
         auto& v       = ctx_.stack_peek();
+        if (const auto* numeric = v.get_if_numeric()) {
+            cf->locals[x].data() = *numeric;
+            return exec_ok();
+        }
         cf->locals[x] = std::visit(
             prelude::overloaded{
                 [](std::unique_ptr<wasm_frame>& v) -> stack_value {
